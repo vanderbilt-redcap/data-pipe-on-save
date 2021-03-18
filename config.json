@@ -1,0 +1,110 @@
+{
+  "name": "Data Pipe on Save",
+
+  "namespace": "Vanderbilt\\DataPipeOnSaveExternalModule",
+
+  "framework-version": 2,
+
+  "authors": [
+    {
+      "name": "Ryan Moore",
+      "email": "datacore@vumc.org",
+      "institution": "Vanderbilt University Medical Center"
+    }
+  ],
+
+  "description": "Piping data from a list of fields to another list of fields. Can save to the same project or another. Can be set up to only pipe on a trigger field and value. Requires specifying the record ID where the data will pipe, using REDCap data piping formatting.",
+
+  "permissions": [
+    "redcap_data_entry_form",
+    "redcap_save_record"
+  ],
+
+  "links": {
+    "project": [
+    ]
+  },
+
+  "no-auth-pages":[""],
+
+  "project-settings": [
+    {
+      "key": "error_email",
+      "name": "Report errors to this email address<br>(in addition to logging them)",
+      "type": "text"
+    },
+    {
+      "key": "enable_debug_logging",
+      "name": "Enable Debug Logging",
+      "type": "checkbox"
+    },
+    {
+      "key": "destination_projects",
+      "name": "Destination Projects",
+      "repeatable": true,
+      "type": "sub_settings",
+      "sub_settings": [
+        {
+          "key": "destination_project",
+          "name": "Project in Which to Generate New Record",
+          "type": "project-id"
+        },
+        {
+          "key": "field_flag",
+          "name": "Field to Trigger Record Generation (leave blank to pipe on every save)",
+          "type": "field-list"
+        },
+        {
+          "key": "value_flag",
+          "name": "Specific value in the flagging field to trigger data piping.",
+          "type": "text"
+        },
+        {
+          "key": "new_record",
+          "name": "Name for New Record (uses standard REDCap piping)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "overwrite-record",
+          "name": "Overwrite data in destination project record every time data is saved in this project.",
+          "type":"radio",
+          "choices": [
+            {"value":"overwrite", "name":"Yes"},
+            {"value":"0","name":"No"}
+          ],
+          "repeatable": false
+        },
+        {
+          "key": "pipe_fields",
+          "name": "Data Field Mappings of Source Data to Destination Data. Data will not be piped if the source field is trying to push a value to a destination field that cannot accept it.",
+          "type": "sub_settings",
+          "repeatable": true,
+          "sub_settings": [
+            {
+              "key": "source-field",
+              "name": "Source Field",
+              "type": "field-list",
+              "required": true
+            },
+            {
+              "key": "destination-field",
+              "name": "Destination Field",
+              "type": "text",
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "system-settings": [
+  ],
+  "compatibility": {
+    "php-version-min": "",
+    "php-version-max": "",
+    "redcap-version-min": "9.0.3",
+    "redcap-version-max": ""
+  }
+}
