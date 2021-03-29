@@ -84,14 +84,12 @@
             {
               "key": "source-field",
               "name": "Source Field",
-              "type": "field-list",
-              "required": true
+              "type": "field-list"
             },
             {
               "key": "destination-field",
               "name": "Destination Field",
-              "type": "text",
-              "required": true
+              "type": "text"
             }
           ]
         }

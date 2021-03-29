@@ -29,12 +29,14 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         }*/
     }
     
-    function redcap_save_record($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1) {
+    function redcap_save_record($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = "") {
+        //echo "Started: ".time()."<br/>";
         $this->pipeDataToDestinationProjects($record, $event_id, $instrument, $repeat_instance);
+        //echo "Ended: ".time()."<br/>";
         //$this->exitAfterHook();
     }
 
-    function pipeDataToDestinationProjects($record, $event_id, $instrument, $repeat_instance) {
+    function pipeDataToDestinationProjects($record, $event_id, $instrument, $repeat_instance="") {
         $debug = $this->getProjectSetting("enable_debug_logging");
         $emailErrors = $this->getProjectSetting("error_email");
 
@@ -57,10 +59,13 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $triggerValue = $triggerValues[$topIndex];
             $recordName = $recordNames[$topIndex];
             $overwrite = $overwrites[$topIndex];
-            $currentSourceFields = $sourceFields[$topIndex];
-            $currentDestinationFields = $destinationFields[$topIndex];
 
-            if (!in_array($triggerField,$fieldsOnForm)) continue;
+            $destinationProject = new \Project($destinationProjectID);
+
+            $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : $fieldsOnForm);
+            $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : $fieldsOnForm);
+
+            if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
             $results = json_decode(REDCap::getData($project_id, 'json', $record, $triggerField, $event_id),true);
             $triggerFieldValue = "";
             foreach ($results as $indexData) {
@@ -70,15 +75,14 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             $triggerFieldSet = false;
-            if ($triggerFieldValue == $triggerValue || ($triggerValue == "" && $triggerFieldValue != "")) {
+            if ($triggerFieldValue == $triggerValue || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
                 $triggerFieldSet = true;
             }
+
             if ($triggerFieldSet && $recordName != "") {
-                $currentData = REDCap::getData($project_id, 'array', $record, array(), $event_id);
-                $destinationProject = new \Project($destinationProjectID);
-
-                $newRecordName = $this->getNewRecordName($destinationProject,$currentData,$recordName,$project_id,$event_id,$repeat_instance);
-
+                $currentData = REDCap::getData($project_id, 'array', $record, array());
+                $newRecordName = $this->getNewRecordName($currentProject,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
+                //echo "New record: $newRecordName<br/>";
                 if ($newRecordName != "") {
                     $destRecordExists = false;
                     $targetRecordSql = "SELECT record FROM redcap_data WHERE project_id='$destinationProjectID' && record='$newRecordName' LIMIT 1";
@@ -99,7 +103,9 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                     }
 
                     if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
+                        //echo "Before transfer: ".time()."<br/>";
                         $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$newRecordName,$event_id,$repeat_instance);
+                        //echo "After transfer: ".time()."<br/>";
                     }
                 }
             }
@@ -118,60 +124,68 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         return $row['element_type'];
     }
 
-    function getNewRecordName(\Project $project, $recordData,$recordSetting,$srcProjectID,$event_id,$repeat_instance = 1) {
+    function getNewRecordName(\Project $project, $recordData,$recordSetting,$instrument,$event_id,$repeat_instance = "") {
         $newRecordID = "";
 
         if ($recordSetting != "") {
-            $validRecordData = array();
-
-            foreach ($recordData as $recordID => $data) {
-                /*if ($data['redcap_event_name'] == $uniqueEventName || !isset($data['redcap_event_name'])) {
-                    $validRecordData = $data;
-                }*/
-                foreach ($data as $eventID => $eventData) {
-                    if ($eventID == "repeat_instances") {
-                        foreach ($eventData as $subEventID => $subEventData) {
-                            if ($subEventID == $event_id) {
-                                $destEventRepeats = $project->isRepeatingEvent($subEventID);
-                                foreach ($subEventData as $subInstrument => $subInstrumentData) {
-                                    $destInstrumentRepeats = ($subInstrument != "" ? $project->isRepeatingForm($subEventID, $subInstrument) : 0);
-                                    foreach ($subInstrumentData as $subInstance => $subInstanceData) {
-                                        if ($subInstance == $repeat_instance) {
-                                            foreach ($subInstanceData as $fieldName => $fieldValue) {
-                                                if ($fieldValue != "") {
-                                                    $validRecordData[$fieldName] = $fieldValue;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } elseif ($eventID == $event_id) {
-                        $destEventRepeats = $project->isRepeatingEvent($event_id);
-                        foreach ($eventData as $fieldName => $fieldValue) {
-                            $destInstrumentRepeats = $project->isRepeatingForm($eventID, $project->metadata[$fieldName]['form_name']);
-                            if (!$destEventRepeats && !$destInstrumentRepeats) {
-                                $validRecordData[$fieldName] = $fieldValue;
-                            }
-                        }
-                    }
-                }
-            }
-
-            $newRecordID = $this->parseRecordSetting($recordSetting,$validRecordData);
+            $newRecordID = $this->parseRecordSetting($project,$instrument,$event_id,$recordSetting,$recordData,$repeat_instance);
         }
         return $newRecordID;
     }
 
-    function parseRecordSetting($recordsetting,$recorddata) {
+    function parseRecordSetting(\Project $currentProject,$repeat_instrument,$event_id,$recordsetting,$recordData,$repeat_instance = "") {
         $returnString = $recordsetting;
-        preg_match_all("/\[(.*?)\]/",$recordsetting,$matchRegEx);
+
+        $events = $currentProject->getUniqueEventNames();
+        $eventNameToId = array_flip($events);
+
+        $parser = new \LogicParser();
+
+        $formatCalc = \Calculate::formatCalcToPHP($recordsetting,$currentProject);
+        //echo "First calc: $formatCalc<br/>";
+        if ($currentProject->longitudinal) {
+            $formatCalc = \LogicTester::logicPrependEventName($formatCalc, $currentProject->getUniqueEventNames($event_id), $currentProject);
+        }
+        //echo "Format calc: $formatCalc<br/>";
+        list ($funcName,$argMap) = $parser->parse($formatCalc,$eventNameToId,true,true,false,false,true);
+        $logicFuncToArgs[$funcName] = $argMap;
+        $thisInstanceArgMap = $logicFuncToArgs[$funcName];
+
+        if ($repeat_instance != "") {
+            foreach ($thisInstanceArgMap as &$theseArgs) {
+                // If there is no instance number for this arm map field, then proceed
+                if ($theseArgs[3] == "") {
+                    $thisInstanceArgEventId = ($theseArgs[0] == "") ? $event_id : $theseArgs[0];
+                    $thisInstanceArgEventId = is_numeric($thisInstanceArgEventId) ? $thisInstanceArgEventId : $currentProject->getEventIdUsingUniqueEventName($thisInstanceArgEventId);
+                    $thisInstanceArgField = $theseArgs[1];
+                    $thisInstanceArgFieldForm = $currentProject->metadata[$thisInstanceArgField]['form_name'];
+                    // If this event or form/event is repeating event/instrument, the add the current instance number to arg map
+                    if ( // Is a valid repeating instrument?
+                        ($repeat_instrument != '' && $thisInstanceArgFieldForm == $repeat_instrument && $currentProject->isRepeatingForm($thisInstanceArgEventId, $thisInstanceArgFieldForm))
+                        // Is a valid repeating event?
+                        || ($repeat_instrument == '' && $currentProject->isRepeatingEvent($thisInstanceArgEventId)))
+                        // NOTE: The commented line below was causing calcs not to be calculated if referencing a field on a repeating event whose form was not designated for the event
+                        // || ($repeat_instrument == '' && $currentProject->isRepeatingEvent($thisInstanceArgEventId) && in_array($thisInstanceArgFieldForm, $currentProject->eventsForms[$thisInstanceArgEventId])))
+                    {
+                        $theseArgs[3] = $repeat_instance;
+                    }
+                }
+            }
+            unset($theseArgs);
+        }
+        /*echo "<pre>";
+        print_r($thisInstanceArgMap);
+        echo "</pre>";*/
+        foreach ($recordData as $record => $thisRecordData) {
+            $returnString = \LogicTester::evaluateCondition(null,$thisRecordData,$funcName,$thisInstanceArgMap,$currentProject);
+            //echo "Calc value: $calcValue<br/>";
+        }
+        /*preg_match_all("/\[(.*?)\]/",$recordsetting,$matchRegEx);
         $stringsToReplace = $matchRegEx[0];
         $fieldNamesReplace = $matchRegEx[1];
         foreach ($fieldNamesReplace as $index => $fieldName) {
             $returnString = db_real_escape_string(str_replace($stringsToReplace[$index],$recorddata[$fieldName],$returnString));
-        }
+        }*/
         return $returnString;
     }
 
@@ -184,7 +198,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $sourceMeta = $sourceProject->metadata;
         $destMeta = $destProject->metadata;
         $destRecordField = $destProject->table_pk;
-        $destFields = array_keys($destMeta);
 
         $destData = array();
 
@@ -216,18 +229,20 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $eventOffset++;
             }
         }
-
+        //echo "Before data looping: ".time()."<br/>";
         if (!empty($sourceData)) {
             foreach ($sourceData as $recordID => $recordData) {
                 foreach ($recordData as $eventID => $eventData) {
                     if ($eventID == "repeat_instances") {
                         foreach ($eventData as $subEventID => $subEventData) {
+                            if ($eventToUse != "" && $subEventID != $eventToUse) continue;
                             if (isset($eventMapping[$subEventID])) {
                                 $destEventID = $eventMapping[$subEventID];
                                 foreach ($subEventData as $instrument => $instrumentData) {
                                     foreach ($instrumentData as $instance => $instanceData) {
                                         if (($instanceToUse != "" && $instance == $instanceToUse) || $instanceToUse == "") {
                                             foreach ($instanceData as $fieldName => $fieldValue) {
+                                                //echo "Field $fieldName, Value: $fieldValue<br/>";
                                                 if ($fieldValue == "") continue;
                                                 if ((in_array($fieldName,$fieldsToUse) || empty($fieldsToUse))) {
                                                     if ($fieldName == $destRecordField && $fieldValue != "") $fieldValue = $recordToUse;
@@ -235,7 +250,11 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                                     $instrumentRepeats = $sourceProject->isRepeatingForm($subEventID, $fieldInstrument);
                                                     if (($instrument == $fieldInstrument && !$instrumentRepeats) || ($instrument != "" && $instrument != $fieldInstrument)) continue;
                                                     $destFieldName = $destinationFields[array_search($fieldName,$fieldsToUse)];
-                                                    $this->saveDestinationData($sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, $instance);
+                                                    if ($destFieldName != "" && $fieldValue != "") {
+                                                        //echo "Before save $destFieldName, $fieldValue: ".time()."<br/>";
+                                                        $this->saveDestinationData($sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, $instance);
+                                                        //echo "After save: ".time()."<br/>";
+                                                    }
                                                 }
                                             }
                                         }
@@ -245,24 +264,35 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                         }
                     }
                     elseif (isset($eventMapping[$eventID])) {
+                        if ($eventToUse != "" && $eventID != $eventToUse) continue;
                         //TODO Need to check if a field is on a repeating/non-repeating basis when looking here for a valid field value, it will be empty ALWAYS otherwise
                         $destEventID = $eventMapping[$eventID];
 
                         foreach ($eventData as $fieldName => $fieldValue) {
                             if ((in_array($fieldName,$fieldsToUse) || empty($fieldsToUse))) {
+                                //echo "Field $fieldName, Value: $fieldValue<br/>";
                                 if ($fieldValue == "") continue;
                                 if ($fieldName == $destRecordField && $fieldValue != "") $fieldValue = $recordToUse;
                                 $fieldInstrument = $sourceMeta[$fieldName]['form_name'];
                                 $instrumentRepeats = $sourceProject->isRepeatingForm($eventID, $fieldInstrument);
                                 if ($instrumentRepeats) continue;
                                 $destFieldName = $destinationFields[array_search($fieldName,$fieldsToUse)];
-                                $this->saveDestinationData($sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID);
+                                /*echo "Dest field: $destFieldName, Source: $fieldName, ".array_search($fieldName,$fieldsToUse)."<br/>";
+                                echo "<pre>";
+                                print_r($destinationFields);
+                                echo "</pre>";*/
+                                if ($destFieldName != "" && $fieldValue != "") {
+                                    //echo "Before save single $destFieldName, $fieldValue: ".time()."<br/>";
+                                    $this->saveDestinationData($sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID);
+                                    //echo "After save single: ".time()."<br/>";
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        //echo "After data looping: ".time()."<br/>";
         return $destData;
     }
 
@@ -293,6 +323,9 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         }
 
         $results = \Records::saveData($destProject->project_id, 'array', $destData);
+/*        echo "<pre>";
+        print_r($results);
+        echo "</pre>";*/
     }
     
     function validFieldValue($fieldMeta,$fieldValue) {
