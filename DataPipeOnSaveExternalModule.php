@@ -54,6 +54,8 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         
         $eventName = $currentProject->uniqueEventNames[$event_id];
 
+        $currentData = REDCap::getData($project_id, 'array', $record, array());
+
         foreach ($destinationProjectIDs as $topIndex => $destinationProjectID) {
             $triggerField = $triggerFields[$topIndex];
             $triggerValue = $triggerValues[$topIndex];
@@ -61,7 +63,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $overwrite = $overwrites[$topIndex];
 
             $destinationProject = new \Project($destinationProjectID);
-
             $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : $fieldsOnForm);
             $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : $fieldsOnForm);
 
@@ -80,7 +81,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             if ($triggerFieldSet && $recordName != "") {
-                $currentData = REDCap::getData($project_id, 'array', $record, array());
                 $newRecordName = $this->getNewRecordName($currentProject,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
                 //echo "New record: $newRecordName<br/>";
                 if ($newRecordName != "") {
@@ -104,8 +104,15 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
                     if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
                         //echo "Before transfer: ".time()."<br/>";
-                        $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$newRecordName,$event_id,$repeat_instance);
+                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$newRecordName,$event_id,$repeat_instance);
+                        /*echo "<pre>";
+                        print_r($saveData);
+                        echo "</pre>";*/
                         //echo "After transfer: ".time()."<br/>";
+                        $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
+                        /*echo "<pre>";
+                        print_r($results);
+                        echo "</pre>";*/
                     }
                 }
             }
@@ -130,6 +137,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         if ($recordSetting != "") {
             $newRecordID = $this->parseRecordSetting($project,$instrument,$event_id,$recordSetting,$recordData,$repeat_instance);
         }
+
         return $newRecordID;
     }
 
@@ -159,9 +167,10 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                     $thisInstanceArgEventId = is_numeric($thisInstanceArgEventId) ? $thisInstanceArgEventId : $currentProject->getEventIdUsingUniqueEventName($thisInstanceArgEventId);
                     $thisInstanceArgField = $theseArgs[1];
                     $thisInstanceArgFieldForm = $currentProject->metadata[$thisInstanceArgField]['form_name'];
+
                     // If this event or form/event is repeating event/instrument, the add the current instance number to arg map
                     if ( // Is a valid repeating instrument?
-                        ($repeat_instrument != '' && $thisInstanceArgFieldForm == $repeat_instrument && $currentProject->isRepeatingForm($thisInstanceArgEventId, $thisInstanceArgFieldForm))
+                        ($repeat_instrument != '' && $currentProject->isRepeatingForm($thisInstanceArgEventId, $thisInstanceArgFieldForm))
                         // Is a valid repeating event?
                         || ($repeat_instrument == '' && $currentProject->isRepeatingEvent($thisInstanceArgEventId)))
                         // NOTE: The commented line below was causing calcs not to be calculated if referencing a field on a repeating event whose form was not designated for the event
@@ -173,12 +182,9 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
             unset($theseArgs);
         }
-        /*echo "<pre>";
-        print_r($thisInstanceArgMap);
-        echo "</pre>";*/
+
         foreach ($recordData as $record => $thisRecordData) {
             $returnString = \LogicTester::evaluateCondition(null,$thisRecordData,$funcName,$thisInstanceArgMap,$currentProject);
-            //echo "Calc value: $calcValue<br/>";
         }
         /*preg_match_all("/\[(.*?)\]/",$recordsetting,$matchRegEx);
         $stringsToReplace = $matchRegEx[0];
@@ -242,7 +248,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                     foreach ($instrumentData as $instance => $instanceData) {
                                         if (($instanceToUse != "" && $instance == $instanceToUse) || $instanceToUse == "") {
                                             foreach ($instanceData as $fieldName => $fieldValue) {
-                                                //echo "Field $fieldName, Value: $fieldValue<br/>";
                                                 if ($fieldValue == "") continue;
                                                 if ((in_array($fieldName,$fieldsToUse) || empty($fieldsToUse))) {
                                                     if ($fieldName == $destRecordField && $fieldValue != "") $fieldValue = $recordToUse;
@@ -252,7 +257,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                                     $destFieldName = $destinationFields[array_search($fieldName,$fieldsToUse)];
                                                     if ($destFieldName != "" && $fieldValue != "") {
                                                         //echo "Before save $destFieldName, $fieldValue: ".time()."<br/>";
-                                                        $this->saveDestinationData($sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, $instance);
+                                                        $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, $instance);
                                                         //echo "After save: ".time()."<br/>";
                                                     }
                                                 }
@@ -283,7 +288,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                 echo "</pre>";*/
                                 if ($destFieldName != "" && $fieldValue != "") {
                                     //echo "Before save single $destFieldName, $fieldValue: ".time()."<br/>";
-                                    $this->saveDestinationData($sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID);
+                                    $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID);
                                     //echo "After save single: ".time()."<br/>";
                                 }
                             }
@@ -296,8 +301,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         return $destData;
     }
 
-    function saveDestinationData(\Project $sourceProject, \Project $destProject, $destFieldName, $srcFieldValue, $destRecord, $destEvent,$destRepeat = 1)
-    {
+    function updateDestinationData(&$destData,\Project $sourceProject, \Project $destProject, $destFieldName, $srcFieldValue, $destRecord, $destEvent,$destRepeat = 1) {
         $destMeta = $destProject->metadata;
         $destEventForms = $destProject->eventsForms[$destEvent];
 
@@ -321,11 +325,20 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $destData[$destRecord][$destEvent][$destFieldName] = $srcFieldValue;
             }
         }
-
-        $results = \Records::saveData($destProject->project_id, 'array', $destData);
-/*        echo "<pre>";
+        /*echo "<pre>";
+        print_r($destData);
+        echo "</pre>";*/
+        //$results = \Records::saveData($destProject->project_id, 'array', $destData);
+        /*echo "<pre>";
         print_r($results);
         echo "</pre>";*/
+        return $destData;
+    }
+
+    function saveDestinationData($project_id, $destData) {
+        $results = "";
+        $results = \Records::saveData($project_id, 'array', $destData);
+        return $results;
     }
     
     function validFieldValue($fieldMeta,$fieldValue) {
