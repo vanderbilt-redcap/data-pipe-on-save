@@ -33,7 +33,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         //echo "Started: ".time()."<br/>";
         $this->pipeDataToDestinationProjects($record, $event_id, $instrument, $repeat_instance);
         //echo "Ended: ".time()."<br/>";
-        //$this->exitAfterHook();
+        $this->exitAfterHook();
     }
 
     function pipeDataToDestinationProjects($record, $event_id, $instrument, $repeat_instance="") {
@@ -321,11 +321,13 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $destData[$destRecord][$destEvent][$destFieldName] = $srcFieldValue;
             }
         }
-
+echo "<pre>";
+        print_r($destData);
+        echo "</pre>";
         $results = \Records::saveData($destProject->project_id, 'array', $destData);
-/*        echo "<pre>";
+        echo "<pre>";
         print_r($results);
-        echo "</pre>";*/
+        echo "</pre>";
     }
     
     function validFieldValue($fieldMeta,$fieldValue) {
