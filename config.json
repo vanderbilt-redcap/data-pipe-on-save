@@ -47,7 +47,8 @@
         {
           "key": "destination_project",
           "name": "Project in Which to Generate New Record",
-          "type": "project-id"
+          "type": "project-id",
+          "required": true
         },
         {
           "key": "field_flag",
