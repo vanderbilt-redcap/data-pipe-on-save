@@ -81,7 +81,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             if ($triggerFieldSet && $recordName != "") {
-                $newRecordName = $this->getNewRecordName($currentProject,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
+                $newRecordName = $this->getNewRecordName($currentProject,$record,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
                 //echo "New record: $newRecordName<br/>";
                 if ($newRecordName != "") {
                     $destRecordExists = false;
@@ -131,11 +131,12 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         return $row['element_type'];
     }
 
-    function getNewRecordName(\Project $project, $recordData,$recordSetting,$instrument,$event_id,$repeat_instance = "") {
+    function getNewRecordName(\Project $project, $record, $recordData,$recordSetting,$instrument,$event_id,$repeat_instance = "") {
         $newRecordID = "";
 
         if ($recordSetting != "") {
-            $newRecordID = $this->parseRecordSetting($project,$instrument,$event_id,$recordSetting,$recordData,$repeat_instance);
+            //$newRecordID = $this->parseRecordSetting($project,$instrument,$event_id,$recordSetting,$recordData,$repeat_instance);
+            $newRecordID = \Piping::replaceVariablesInLabel($recordSetting,$record,$event_id,$repeat_instance,$recordData);
         }
 
         return $newRecordID;
