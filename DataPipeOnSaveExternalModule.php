@@ -137,6 +137,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         if ($recordSetting != "") {
             //$newRecordID = $this->parseRecordSetting($project,$instrument,$event_id,$recordSetting,$recordData,$repeat_instance);
             $newRecordID = \Piping::replaceVariablesInLabel($recordSetting,$record,$event_id,$repeat_instance,$recordData,true,$project_id,false);
+            $newRecordID = $this->parseSpecialTags($project_id,$newRecordID);
         }
 
         return $newRecordID;
@@ -370,5 +371,59 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $enumArray[trim($splitPair[0])] = trim($splitPair[1]);
         }
         return $enumArray;
+    }
+
+    function parseSpecialTags($project_id,$setting) {
+        preg_match_all('#(?<=:).+?(?=:)#',$setting,$matches);
+
+        foreach ($matches[0] as $index => $match) {
+            if ($index % 2 != 0) continue;
+            switch ($match) {
+                case "next_id":
+                    $setting = $this->nextID($project_id,$setting,$match);
+                    break;
+            }
+        }
+        return $setting;
+    }
+
+    function nextID($project_id,$setting,$match) {
+        $return = $setting;
+
+        $replaceString = ":".$match.":";
+        $searchString = str_replace($replaceString,"%",$setting);
+        $baseRecordName = str_replace($replaceString,'',$setting);
+        $nextNumber = 1;
+
+        $sql = "SELECT record
+						FROM redcap_record_list
+						WHERE project_id = ?
+                        AND record LIKE ?
+						ORDER BY CAST(SUBSTR(record,".(strlen($searchString)+1).") AS UNSIGNED) DESC
+						LIMIT 1";
+        $result = $this->query($sql, [$project_id,$searchString]);
+        while ($row = $result->fetch_assoc()) {
+            if ($row['record'] != "") {
+                $numberID = str_replace($baseRecordName,'',$row['record']);
+                if (is_numeric($numberID)) {
+                    $nextNumber = $numberID+1;
+                    break;
+                }
+            }
+        }
+        $return = htmlspecialchars($baseRecordName.$nextNumber,ENT_QUOTES);
+
+        $maxLoops = 0;
+
+        while ($this->checkRecordExists($project_id,$return) && $maxLoops < 20) {
+            $nextNumber++;
+            $maxLoops++;
+            $return = htmlspecialchars($baseRecordName.$nextNumber,ENT_QUOTES);
+        }
+
+        if ($maxLoops == 20) {
+            return false;
+        }
+        return $return;
     }
 }
