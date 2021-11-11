@@ -426,4 +426,13 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         }
         return $return;
     }
+
+    function checkRecordExists($project_id,$record) {
+        $sql = "SELECT record
+						FROM redcap_record_list
+						WHERE project_id = ?
+                        AND record = ?";
+        $result = $this->query($sql,[$project_id,$record]);
+        return ($result->num_rows > 0);
+    }
 }
