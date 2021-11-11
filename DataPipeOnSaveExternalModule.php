@@ -110,6 +110,32 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                         echo "</pre>";*/
                         //echo "After transfer: ".time()."<br/>";
                         $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
+                        $errors = $results['errors'];
+                        /*echo "Result:<br/>";
+                        echo "<pre>";
+                        print_r($results);
+                        echo "</pre>";*/
+                        if(!empty($errors)){
+                            $errorString = stripslashes(json_encode($errors, JSON_PRETTY_PRINT));
+                            $errorString = str_replace('""', '"', $errorString);
+
+                            $message = "The " . $this->getModuleName() . " module could not copy values for record " . $recordToCheck . " from project $project_id to project $targetProjectID because of the following error(s):\n\n$errorString";
+                            error_log($message);
+
+                            $errorEmail = $this->getProjectSetting('error_email');
+                            //if ($errorEmail == "") $errorEmail = "james.r.moore@vumc.org";
+                            if(!empty($errorEmail)){
+                                ## Add check for universal from email address
+                                global $from_email;
+                                if($from_email != '') {
+                                    $headers = "From: ".$from_email."\r\n";
+                                }
+                                else {
+                                    $headers = null;
+                                }
+                                mail($errorEmail, $this->getModuleName() . " Module Error", $message, $headers);
+                            }
+                        }
                         /*echo "<pre>";
                         print_r($results);
                         echo "</pre>";*/
