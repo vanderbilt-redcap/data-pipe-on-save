@@ -119,7 +119,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                             $errorString = stripslashes(json_encode($errors, JSON_PRETTY_PRINT));
                             $errorString = str_replace('""', '"', $errorString);
 
-                            $message = "The " . $this->getModuleName() . " module could not copy values for record " . $recordToCheck . " from project $project_id to project $targetProjectID because of the following error(s):\n\n$errorString";
+                            $message = "The " . $this->getModuleName() . " module could not copy values for record " . $newRecordName . " from project $project_id to project ".$destinationProjectID." because of the following error(s):\n\n$errorString";
                             error_log($message);
 
                             $errorEmail = $this->getProjectSetting('error_email');
@@ -303,7 +303,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
                         foreach ($eventData as $fieldName => $fieldValue) {
                             if ((in_array($fieldName,$fieldsToUse) || empty($fieldsToUse))) {
-                                //echo "Field $fieldName, Value: $fieldValue<br/>";
+                                echo "Field $fieldName, Value: $fieldValue<br/>";
                                 if ($fieldValue == "") continue;
                                 if ($fieldName == $destRecordField && $fieldValue != "") $fieldValue = $recordToUse;
                                 $fieldInstrument = $sourceMeta[$fieldName]['form_name'];
