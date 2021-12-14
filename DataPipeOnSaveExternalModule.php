@@ -105,9 +105,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                     if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
                         //echo "Before transfer: ".time()."<br/>";
                         $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$newRecordName,$event_id,$repeat_instance);
-                        /*echo "<pre>";
-                        print_r($saveData);
-                        echo "</pre>";*/
                         //echo "After transfer: ".time()."<br/>";
                         $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
                         $errors = $results['errors'];
@@ -162,7 +159,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
         if ($recordSetting != "") {
             //$newRecordID = $this->parseRecordSetting($project,$instrument,$event_id,$recordSetting,$recordData,$repeat_instance);
-            $newRecordID = \Piping::replaceVariablesInLabel($recordSetting,$record,$event_id,$repeat_instance,$recordData,true,$project_id,false);
+            $newRecordID = \Piping::replaceVariablesInLabel($recordSetting,$record,$event_id,$repeat_instance,$recordData,true,$project_id,false,"",1,false,false,$instrument);
             $newRecordID = $this->parseSpecialTags($project_id,$newRecordID);
         }
 
@@ -303,7 +300,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
                         foreach ($eventData as $fieldName => $fieldValue) {
                             if ((in_array($fieldName,$fieldsToUse) || empty($fieldsToUse))) {
-                                echo "Field $fieldName, Value: $fieldValue<br/>";
                                 if ($fieldValue == "") continue;
                                 if ($fieldName == $destRecordField && $fieldValue != "") $fieldValue = $recordToUse;
                                 $fieldInstrument = $sourceMeta[$fieldName]['form_name'];
