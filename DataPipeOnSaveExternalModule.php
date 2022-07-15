@@ -288,13 +288,15 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $destInstrumentRepeats = $destProject->isRepeatingFormAnyEvent($destInstanceInstrument);
                 if ($destInstrumentRepeats) {
                     $results = json_decode(REDCap::getData(array(
-                        'project_id'=>$destProject->project_id, 'return_format'=>'json', $recordToUse, array($destFieldName,$destRecordField,$destInstanceInstrument."_complete")
+                        'project_id'=>$destProject->project_id, 'return_format'=>'json', 'records'=>array($recordToUse), 'fields'=>array($destFieldName,$destRecordField,$destInstanceInstrument."_complete")
                     )),true);
                     $maxInstance = 1;
+
                     foreach ($results as $instanceData) {
                         if (isset($instanceData['redcap_repeat_instance']) && is_numeric($instanceData['redcap_repeat_instance'])) {
-                            $maxInstance = $instanceData['redcap_repeat_instance'];
+                            $maxInstance = $instanceData['redcap_repeat_instance'] + 1;
                             if ($instanceData[$destFieldName] == $instanceMatching['value']) {
+                                $maxInstance = $instanceData['redcap_repeat_instance'];
                                 break;
                             }
                         }
