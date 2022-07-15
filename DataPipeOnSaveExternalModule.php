@@ -27,14 +27,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $this->removeLogs("DELETE WHERE message = 'Auto record for $record' AND project_id=$project_id");
             $logID = $this->log("Auto record for " . $record, ["destination_record_id" => $recordChange[$record]]);
         }*/
-        $results = json_decode(REDCap::getData(
-            array('project_id'=>$project_id,'return_format'=>'json','records'=>array($record),
-                'returnEmptyEvents'=>true,'fields'=>array('record_id','pi_last_name',$instrument.'_complete'))
-        ),
-            true);
-        echo "<pre>";
-        print_r($results);
-        echo "</pre>";
     }
     
     function redcap_save_record($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = "") {
