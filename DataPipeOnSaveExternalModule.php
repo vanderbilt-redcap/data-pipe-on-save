@@ -27,28 +27,40 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $this->removeLogs("DELETE WHERE message = 'Auto record for $record' AND project_id=$project_id");
             $logID = $this->log("Auto record for " . $record, ["destination_record_id" => $recordChange[$record]]);
         }*/
+        $results = json_decode(REDCap::getData(
+            array('project_id'=>$project_id,'return_format'=>'json','records'=>array($record),
+                'returnEmptyEvents'=>true,'fields'=>array('record_id','pi_last_name',$instrument.'_complete'))
+        ),
+            true);
+        echo "<pre>";
+        print_r($results);
+        echo "</pre>";
     }
     
     function redcap_save_record($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = "") {
         //echo "Started: ".time()."<br/>";
-        $this->pipeDataToDestinationProjects($record, $event_id, $instrument, $repeat_instance);
+        $this->pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance);
         //echo "Ended: ".time()."<br/>";
         //$this->exitAfterHook();
     }
 
-    function pipeDataToDestinationProjects($record, $event_id, $instrument, $repeat_instance="") {
+    function pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance="") {
+        //TODO Need to account for new feature of repeated saves generating new instances
         $debug = $this->getProjectSetting("enable_debug_logging");
         $emailErrors = $this->getProjectSetting("error_email");
 
-        $destinationProjectIDs = $this->getProjectSetting("destination_project");
-        $triggerFields = $this->getProjectSetting("field_flag");
-        $triggerValues = $this->getProjectSetting("value_flag");
-        $recordNames = $this->getProjectSetting("new_record");
-        $overwrites = $this->getProjectSetting("overwrite-record");
-        $sourceFields = $this->getProjectSetting("source-field");
-        $destinationFields = $this->getProjectSetting("destination-field");
+        $destinationProjectIDs = $this->getProjectSetting("destination_project",$project_id);
+        $triggerFields = $this->getProjectSetting("field_flag",$project_id);
+        $triggerValues = $this->getProjectSetting("value_flag",$project_id);
+        $recordNames = $this->getProjectSetting("new_record",$project_id);
+        $overwrites = $this->getProjectSetting("overwrite-record",$project_id);
+        $sourceFields = $this->getProjectSetting("source-field",$project_id);
+        $destinationFields = $this->getProjectSetting("destination-field",$project_id);
 
-        $project_id = $this->getProjectId();
+        $createNewInstances = $this->getProjectSetting("create-new-instance",$project_id);
+        $sourceInstanceFields = $this->getProjectSetting("source-instance-field",$project_id);
+        $destInstanceFields = $this->getProjectSetting("dest-instance-field",$project_id);
+
         $currentProject = new \Project($project_id);
         $fieldsOnForm = array_keys($currentProject->forms[$instrument]['fields']);
         
@@ -61,17 +73,30 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $triggerValue = $triggerValues[$topIndex];
             $recordName = $recordNames[$topIndex];
             $overwrite = $overwrites[$topIndex];
+            $createNewInstance = $createNewInstances[$topIndex];
+            $sourceInstanceField = $sourceInstanceFields[$topIndex];
+            $destInstanceField = $destInstanceFields[$topIndex];
+            $instanceMatching = array();
+            if ($createNewInstance == "yes") {
+                $instanceMatching = array('source'=>$sourceInstanceField,'dest'=>$destInstanceField);
+            }
 
             $destinationProject = new \Project($destinationProjectID);
             $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : $fieldsOnForm);
             $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : $fieldsOnForm);
+            $currentSourceFields[] = $sourceInstanceField;
+            $currentDestinationFields[] = $destInstanceField;
 
             if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
-            $results = json_decode(REDCap::getData($project_id, 'json', $record, $triggerField, $event_id),true);
+            $results = json_decode(REDCap::getData($project_id, 'json', $record, array($triggerField,$sourceInstanceField), $event_id),true);
             $triggerFieldValue = "";
+
             foreach ($results as $indexData) {
                 if ((!isset($indexData['redcap_event_name']) || $indexData['redcap_event_name'] == $eventName) && $indexData[$triggerField] != "") {
                     $triggerFieldValue = $indexData[$triggerField];
+                }
+                if (!empty($instanceMatching) && isset($indexData[$sourceInstanceField]) && $indexData[$sourceInstanceField] != "") {
+                    $instanceMatching['value'] = $indexData[$sourceInstanceField];
                 }
             }
 
@@ -104,7 +129,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
                     if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
                         //echo "Before transfer: ".time()."<br/>";
-                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$newRecordName,$event_id,$repeat_instance);
+                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$instanceMatching,$newRecordName,$event_id,$repeat_instance);
                         //echo "After transfer: ".time()."<br/>";
                         $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
                         $errors = $results['errors'];
@@ -220,7 +245,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         return $returnString;
     }
 
-    function transferRecordData($sourceData, \Project $sourceProject, \Project $destProject, $fieldsToUse, $destinationFields, $recordToUse, $eventToUse = "", $instanceToUse = "") {
+    function transferRecordData($sourceData, \Project $sourceProject, \Project $destProject, $fieldsToUse, $destinationFields, $instanceMatching, $recordToUse, $eventToUse = "", $instanceToUse = "") {
         $eventMapping = array();
         $sourceEvents = $sourceProject->eventInfo;
         $destEvents = $destProject->eventInfo;
@@ -261,7 +286,31 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
         }
         //echo "Before data looping: ".time()."<br/>";
+        $destInstanceInstrument = "";
         if (!empty($sourceData)) {
+            $destInstance = 1;
+            if (is_array($instanceMatching) && !empty($instanceMatching)) {
+                $destFieldName = $instanceMatching['dest'];
+
+                $destInstanceInstrument = $destMeta[$destFieldName]['form_name'];
+                $destInstrumentRepeats = $destProject->isRepeatingFormAnyEvent($destInstanceInstrument);
+                if ($destInstrumentRepeats) {
+                    $results = json_decode(REDCap::getData(array(
+                        'project_id'=>$destProject->project_id, 'return_format'=>'json', $recordToUse, array($destFieldName,$destRecordField,$destInstanceInstrument."_complete")
+                    )),true);
+                    $maxInstance = 1;
+                    foreach ($results as $instanceData) {
+                        if (isset($instanceData['redcap_repeat_instance']) && is_numeric($instanceData['redcap_repeat_instance'])) {
+                            $maxInstance = $instanceData['redcap_repeat_instance'];
+                            if ($instanceData[$destFieldName] == $instanceMatching['value']) {
+                                break;
+                            }
+                        }
+                    }
+                    $destInstance = $maxInstance;
+                }
+            }
+
             foreach ($sourceData as $recordID => $recordData) {
                 foreach ($recordData as $eventID => $eventData) {
                     if ($eventID == "repeat_instances") {
@@ -281,8 +330,9 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                                     if (($instrument == $fieldInstrument && !$instrumentRepeats) || ($instrument != "" && $instrument != $fieldInstrument)) continue;
                                                     $destFieldName = $destinationFields[array_search($fieldName,$fieldsToUse)];
                                                     if ($destFieldName != "" && $fieldValue != "") {
+                                                        $destFieldInstrument = $destMeta[$destFieldName]['form_name'];
                                                         //echo "Before save $destFieldName, $fieldValue: ".time()."<br/>";
-                                                        $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, $instance);
+                                                        $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
                                                         //echo "After save: ".time()."<br/>";
                                                     }
                                                 }
@@ -295,7 +345,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                     }
                     elseif (isset($eventMapping[$eventID])) {
                         if ($eventToUse != "" && $eventID != $eventToUse) continue;
-                        //TODO Need to check if a field is on a repeating/non-repeating basis when looking here for a valid field value, it will be empty ALWAYS otherwise
                         $destEventID = $eventMapping[$eventID];
 
                         foreach ($eventData as $fieldName => $fieldValue) {
@@ -311,8 +360,9 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                 print_r($destinationFields);
                                 echo "</pre>";*/
                                 if ($destFieldName != "" && $fieldValue != "") {
+                                    $destFieldInstrument = $destMeta[$destFieldName]['form_name'];
                                     //echo "Before save single $destFieldName, $fieldValue: ".time()."<br/>";
-                                    $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID);
+                                    $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
                                     //echo "After save single: ".time()."<br/>";
                                 }
                             }

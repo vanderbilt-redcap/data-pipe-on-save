@@ -77,6 +77,30 @@
           "repeatable": false
         },
         {
+          "key": "repeating-text",
+          "name": "Settings to Detail Repeating Instances Behavior",
+          "type": "descriptive"
+        },
+        {
+          "key": "create-new-instance",
+          "name": "Create New Instance Per Save",
+          "type": "radio",
+          "choices": [
+            {"value":"yes", "name":"Yes"},
+            {"value":"no","name":"No"}
+          ]
+        },
+        {
+          "key": "source-instance-field",
+          "name": "Field on This Project to Indicate Instance Match",
+          "type": "field-list"
+        },
+        {
+          "key": "dest-instance-field",
+          "name": "Field on Destination Project to Indicate Instance Match",
+          "type": "text"
+        },
+        {
           "key": "pipe_fields",
           "name": "Data Field Mappings of Source Data to Destination Data. Data will not be piped if the source field is trying to push a value to a destination field that cannot accept it.",
           "type": "sub_settings",
