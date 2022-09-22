@@ -36,7 +36,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         //$this->exitAfterHook();
     }
 
-    function pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance="") {
+    public function pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance="") {
         //TODO Need to account for new feature of repeated saves generating new instances
         $debug = $this->getProjectSetting("enable_debug_logging");
         $emailErrors = $this->getProjectSetting("error_email");
