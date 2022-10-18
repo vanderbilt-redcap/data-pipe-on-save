@@ -93,7 +93,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             $triggerFieldSet = false;
-            if ($triggerFieldValue == $triggerValue || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
+            if ($triggerFieldValue == $triggerValue || ($triggerValue == ":is_empty:" && $triggerFieldValue === "") || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
                 $triggerFieldSet = true;
             }
 
@@ -444,10 +444,13 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
         foreach ($matches[0] as $index => $match) {
             if ($index % 2 != 0) continue;
-            switch ($match) {
-                case "next_id":
-                    $setting = $this->nextID($project_id,$setting,$match);
-                    break;
+            if ($match == "next_id") {
+                $setting = $this->nextID($project_id, $setting, $match);
+            }
+            elseif (strpos($match,"uid=") === 0) {
+                $split = explode("=",$match);
+                $setting = str_replace(":".$match.":",str_pad("",$split[1],"0").":next_id:",$setting);
+                $setting = $this->nextID($project_id, $setting, "next_id");
             }
         }
         return $setting;
