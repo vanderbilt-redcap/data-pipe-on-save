@@ -91,14 +91,18 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                     $instanceMatching['value'] = $indexData[$sourceInstanceField];
                 }
             }
-
+echo "<pre>";
+            print_r($instanceMatching);
+            echo "</pre>";
             $triggerFieldSet = false;
             if ($triggerFieldValue == $triggerValue || ($triggerValue == ":is_empty:" && $triggerFieldValue === "") || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
                 $triggerFieldSet = true;
             }
 
             if ($triggerFieldSet && $recordName != "") {
-                $newRecordName = $this->getNewRecordName($project_id,$record,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
+                //TODO Need to have logging or some other means of mapping source record to an existing dest record, save a record or just use a module log?
+                // Only need in the case of there being UID setting?
+                $newRecordName = $this->getNewRecordName($destinationProjectID,$project_id,$instanceMatching,$record,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
                 //echo "New record: $newRecordName<br/>";
                 if ($newRecordName != "") {
                     $destRecordExists = false;
@@ -171,13 +175,13 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         return $row['element_type'];
     }
 
-    function getNewRecordName($project_id, $record, $recordData,$recordSetting,$instrument,$event_id,$repeat_instance = "") {
+    function getNewRecordName($dest_project_id,$project_id, $instance_matching, $record, $recordData,$recordSetting,$instrument,$event_id,$repeat_instance = "") {
         $newRecordID = "";
 
         if ($recordSetting != "") {
             //$newRecordID = $this->parseRecordSetting($project,$instrument,$event_id,$recordSetting,$recordData,$repeat_instance);
             $newRecordID = \Piping::replaceVariablesInLabel($recordSetting,$record,$event_id,$repeat_instance,$recordData,true,$project_id,false,"",1,false,false,$instrument);
-            $newRecordID = $this->parseSpecialTags($project_id,$newRecordID);
+            $newRecordID = $this->parseSpecialTags($dest_project_id,$newRecordID,$project_id,$record,$event_id,$repeat_instance,$instance_matching);
         }
 
         return $newRecordID;
@@ -439,7 +443,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         return $enumArray;
     }
 
-    function parseSpecialTags($project_id,$setting) {
+    function parseSpecialTags($project_id,$setting,$source_project_id,$source_record,$source_event,$source_instance,$instance_matching) {
         preg_match_all('#(?<=:).+?(?=:)#',$setting,$matches);
 
         foreach ($matches[0] as $index => $match) {
@@ -448,9 +452,36 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $setting = $this->nextID($project_id, $setting, $match);
             }
             elseif (strpos($match,"uid=") === 0) {
-                $split = explode("=",$match);
-                $setting = str_replace(":".$match.":",str_pad("",$split[1],"0").":next_id:",$setting);
-                $setting = $this->nextID($project_id, $setting, "next_id");
+                $split = explode("=", $match);
+                $setting = str_replace(":" . $match . ":", str_pad("", $split[1], "0") . ":next_id:", $setting);
+                $destinationRecordID = (isset($instance_matching['value']) ? $instance_matching['value'] : "");
+                $setting = ($destinationRecordID != "" ? $destinationRecordID : $this->nextID($project_id, $setting, "next_id"));
+
+                $sourceProject = new \Project($source_project_id);
+                $sourceMeta = $sourceProject->metadata;
+                $sourceEventForms = $sourceProject->eventsForms[$source_event];
+                $sourceField = $instance_matching['source'];
+
+                $sourceInstrument = $sourceMeta[$sourceField]['form_name'];
+                $sourceRecordField = $sourceProject->table_pk;
+                $sourceInstrumentRepeats = $sourceProject->isRepeatingForm($source_event, $sourceInstrument);
+                $sourceEventRepeats = $sourceProject->isRepeatingEvent($source_event);
+
+                if ($sourceInstrumentRepeats) {
+                    $saveData[$source_record][$source_event][$sourceRecordField] = $source_record;
+                    //$destData[$destRecord][$destEvent]['redcap_repeat_instrument'] = "";
+                    //$destData[$destRecord][$destEvent]['redcap_repeat_instance'] = $destRepeat;
+                    $saveData[$source_record]['repeat_instances'][$source_event][$sourceInstrument][$source_instance][$sourceField] = $setting;
+                } elseif ($sourceEventRepeats) {
+                    $saveData[$source_record][$source_event][$sourceRecordField] = $source_record;
+                    //$destData[$destRecord][$destEvent]['redcap_repeat_instrument'] = "";
+                    //$destData[$destRecord][$destEvent]['redcap_repeat_instance'] = $destRepeat;
+                    $saveData[$source_record]['repeat_instances'][$source_event][''][$source_instance][$sourceField] = $setting;
+                } else {
+                    $saveData[$source_record][$source_event][$sourceField] = $setting;
+                }
+
+                $result = \REDCap::saveData($source_project_id, 'array', $saveData, 'overwrite');
             }
         }
         return $setting;
@@ -470,7 +501,9 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                         AND record LIKE ?
 						ORDER BY CAST(SUBSTR(record,".(strlen($searchString)+1).") AS UNSIGNED) DESC
 						LIMIT 1";
+
         $result = $this->query($sql, [$project_id,$searchString]);
+
         while ($row = $result->fetch_assoc()) {
             if ($row['record'] != "") {
                 $numberID = str_replace($baseRecordName,'',$row['record']);
