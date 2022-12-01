@@ -74,10 +74,14 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             $destinationProject = new \Project($destinationProjectID);
-            $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : $fieldsOnForm);
-            $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : $fieldsOnForm);
-            $currentSourceFields[] = $sourceInstanceField;
-            $currentDestinationFields[] = $destInstanceField;
+            $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : array_keys($currentProject->metadata));
+            $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : array_intersect($currentSourceFields,array_keys($destinationProject->metadata)));
+            if ($sourceInstanceField != "") {
+                $currentSourceFields[] = $sourceInstanceField;
+            }
+            if ($destInstanceField != "") {
+                $currentDestinationFields[] = $destInstanceField;
+            }
 
             if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
             $results = json_decode(REDCap::getData($project_id, 'json', $record, array($triggerField,$sourceInstanceField), $event_id),true);
@@ -91,9 +95,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                     $instanceMatching['value'] = $indexData[$sourceInstanceField];
                 }
             }
-echo "<pre>";
-            print_r($instanceMatching);
-            echo "</pre>";
+
             $triggerFieldSet = false;
             if ($triggerFieldValue == $triggerValue || ($triggerValue == ":is_empty:" && $triggerFieldValue === "") || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
                 $triggerFieldSet = true;
@@ -125,7 +127,7 @@ echo "<pre>";
 
                     if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
                         //echo "Before transfer: ".time()."<br/>";
-                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$instanceMatching,$newRecordName,$event_id,$repeat_instance);
+                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$instanceMatching,$newRecordName);
                         //echo "After transfer: ".time()."<br/>";
                         $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
                         $errors = $results['errors'];
@@ -252,7 +254,18 @@ echo "<pre>";
         $destRecordField = $destProject->table_pk;
 
         $destData = array();
-
+        /*echo "Fields to use:<br/>";
+        echo "<pre>";
+        print_r($fieldsToUse);
+        echo "</pre>";
+        echo "Event to use:<br/>";
+        echo "<pre>";
+        print_r($eventToUse);
+        echo "</pre>";
+        echo "Dest fields:<br/>";
+        echo "<pre>";
+        print_r($destinationFields);
+        echo "</pre>";*/
         foreach ($sourceEvents as $eventID => $eventInfo) {
             if (count($destEvents) > 1) {
                 foreach ($destEvents as $destID => $destEventInfo) {
@@ -281,6 +294,7 @@ echo "<pre>";
                 $eventOffset++;
             }
         }
+
         //echo "Before data looping: ".time()."<br/>";
         $destInstanceInstrument = "";
         if (!empty($sourceData)) {
@@ -327,7 +341,11 @@ echo "<pre>";
                                                     $instrumentRepeats = $sourceProject->isRepeatingForm($subEventID, $fieldInstrument);
                                                     if (($instrument == $fieldInstrument && !$instrumentRepeats) || ($instrument != "" && $instrument != $fieldInstrument)) continue;
                                                     $destFieldName = $destinationFields[array_search($fieldName,$fieldsToUse)];
-                                                    if ($destFieldName != "" && $fieldValue != "") {
+                                                    /*echo "Repeating field is $fieldName mapping to $destFieldName with a value of $fieldValue<br/>";
+                                                    echo "<pre>";
+                                                    print_r($fieldValue);
+                                                    echo "</pre>";*/
+                                                    if ($destFieldName != "" && ((!is_array($fieldValue) && $fieldValue != "") || (is_array($fieldValue) && count(array_filter($fieldValue)) !== 0))) {
                                                         $destFieldInstrument = $destMeta[$destFieldName]['form_name'];
                                                         //echo "Before save $destFieldName, $fieldValue: ".time()."<br/>";
                                                         $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
@@ -357,7 +375,8 @@ echo "<pre>";
                                 echo "<pre>";
                                 print_r($destinationFields);
                                 echo "</pre>";*/
-                                if ($destFieldName != "" && $fieldValue != "") {
+
+                                if ($destFieldName != "" && ((!is_array($fieldValue) && $fieldValue != "") || (is_array($fieldValue) && count(array_filter($fieldValue)) !== 0))) {
                                     $destFieldInstrument = $destMeta[$destFieldName]['form_name'];
                                     //echo "Before save single $destFieldName, $fieldValue: ".time()."<br/>";
                                     $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
@@ -370,6 +389,9 @@ echo "<pre>";
             }
         }
         //echo "After data looping: ".time()."<br/>";
+        /*echo "<pre>";
+        print_r($destData);
+        echo "</pre>";*/
         return $destData;
     }
 
