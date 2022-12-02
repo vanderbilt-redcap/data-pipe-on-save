@@ -77,6 +77,16 @@
           "repeatable": false
         },
         {
+          "key": "pipe-all-events",
+          "name": "Pipe data from all events on record save?",
+          "type":"radio",
+          "choices": [
+            {"value":"yes", "name":"Yes"},
+            {"value":"no","name":"No"}
+          ],
+          "repeatable": false
+        },
+        {
           "key": "repeating-text",
           "name": "Settings to Detail Repeating Instances Behavior",
           "type": "descriptive"

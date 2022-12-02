@@ -46,6 +46,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $triggerValues = $this->getProjectSetting("value_flag",$project_id);
         $recordNames = $this->getProjectSetting("new_record",$project_id);
         $overwrites = $this->getProjectSetting("overwrite-record",$project_id);
+        $pipeAllEvents = $this->getProjectSetting("pipe-all-events",$project_id);
         $sourceFields = $this->getProjectSetting("source-field",$project_id);
         $destinationFields = $this->getProjectSetting("destination-field",$project_id);
 
@@ -65,6 +66,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $triggerValue = $triggerValues[$topIndex];
             $recordName = $recordNames[$topIndex];
             $overwrite = $overwrites[$topIndex];
+            $pipeAllEvent = $pipeAllEvents[$topIndex];
             $createNewInstance = $createNewInstances[$topIndex];
             $sourceInstanceField = $sourceInstanceFields[$topIndex];
             $destInstanceField = $destInstanceFields[$topIndex];
@@ -127,7 +129,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
                     if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
                         //echo "Before transfer: ".time()."<br/>";
-                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$instanceMatching,$newRecordName);
+                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$instanceMatching,$newRecordName,($pipeAllEvent == "yes" ? $event_id : ""),$repeat_instance);
                         //echo "After transfer: ".time()."<br/>";
                         $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
                         $errors = $results['errors'];
