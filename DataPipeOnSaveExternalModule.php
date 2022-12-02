@@ -33,7 +33,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         //echo "Started: ".time()."<br/>";
         $this->pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance);
         //echo "Ended: ".time()."<br/>";
-        //$this->exitAfterHook();
+        $this->exitAfterHook();
     }
 
     public function pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance="") {
@@ -129,14 +129,14 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
                     if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
                         //echo "Before transfer: ".time()."<br/>";
-                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$instanceMatching,$newRecordName,($pipeAllEvent == "yes" ? $event_id : ""),$repeat_instance);
+                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$instanceMatching,$newRecordName,($pipeAllEvent == "yes" ? "" : $event_id),$repeat_instance);
                         //echo "After transfer: ".time()."<br/>";
                         $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
                         $errors = $results['errors'];
-                        /*echo "Result:<br/>";
+                        echo "Result:<br/>";
                         echo "<pre>";
                         print_r($results);
-                        echo "</pre>";*/
+                        echo "</pre>";
                         if(!empty($errors)){
                             $errorString = stripslashes(json_encode($errors, JSON_PRETTY_PRINT));
                             $errorString = str_replace('""', '"', $errorString);
@@ -391,9 +391,9 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
         }
         //echo "After data looping: ".time()."<br/>";
-        /*echo "<pre>";
+        echo "<pre>";
         print_r($destData);
-        echo "</pre>";*/
+        echo "</pre>";
         return $destData;
     }
 
