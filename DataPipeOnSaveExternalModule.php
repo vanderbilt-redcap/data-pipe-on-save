@@ -33,7 +33,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         //echo "Started: ".time()."<br/>";
         $this->pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance);
         //echo "Ended: ".time()."<br/>";
-        $this->exitAfterHook();
+        //$this->exitAfterHook();
     }
 
     public function pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance="") {
@@ -133,10 +133,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                         //echo "After transfer: ".time()."<br/>";
                         $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
                         $errors = $results['errors'];
-                        echo "Result:<br/>";
-                        echo "<pre>";
-                        print_r($results);
-                        echo "</pre>";
+
                         if(!empty($errors)){
                             $errorString = stripslashes(json_encode($errors, JSON_PRETTY_PRINT));
                             $errorString = str_replace('""', '"', $errorString);
@@ -391,9 +388,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
         }
         //echo "After data looping: ".time()."<br/>";
-        echo "<pre>";
-        print_r($destData);
-        echo "</pre>";
+
         return $destData;
     }
 
@@ -561,4 +556,73 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $result = $this->query($sql,[$project_id,$record]);
         return ($result->num_rows > 0);
     }
+
+    // If the Data Entry Trigger is enabled, then send HTTP Post request to specified URL
+    /*public static function launchDataEntryTrigger($data_entry_trigger_url)
+    {
+        global $table_pk, $longitudinal, $Proj, $data_entry_trigger_enabled, $redcap_version;
+
+        // First, check if enabled
+        if (!$data_entry_trigger_enabled || $data_entry_trigger_url == '') {
+            return false;
+        }
+        // Set record name
+        $record = $_POST[$table_pk];
+        // Build HTTP Post request parameters to send
+        $params = array('redcap_url'=>APP_PATH_WEBROOT_FULL,
+            'project_url'=>APP_PATH_WEBROOT_FULL."redcap_v{$redcap_version}/index.php?pid=".PROJECT_ID,
+            'project_id'=>PROJECT_ID, 'username'=>USERID);
+        // Add record name (using its literal variable name as key)
+        $params['record'] = $record;
+        // If longitudinal, include unique event name
+        if ($longitudinal) {
+            $params['redcap_event_name'] = $Proj->getUniqueEventNames($_GET['event_id']);
+        }
+        // Add unique data access group, if record is in a DAG
+        if (PAGE != 'surveys/index.php' && isset($_POST['__GROUPID__']) && !empty($_POST['__GROUPID__'])) {
+            // Data Entry Form: Get group_id from Post value
+            $unique_group_name = $Proj->getUniqueGroupNames($_POST['__GROUPID__']);
+        } elseif (PAGE == 'surveys/index.php') {
+            // Survey: Check if DAGs exist and get DAG manually from back-end
+            $uniqueDags = $Proj->getUniqueGroupNames();
+            if (!empty($uniqueDags)) {
+                // Query back-end to get DAG for this record (if in a DAG)
+                $group_id = Records::getRecordGroupId(PROJECT_ID, $record);
+                if ($group_id !== false) {
+                    $unique_group_name = $Proj->getUniqueGroupNames($group_id);
+                }
+            }
+        }
+        if (isset($unique_group_name) && !empty($unique_group_name)) {
+            $params['redcap_data_access_group'] = $unique_group_name;
+        }
+        // Add name of data collection instrument and its status value (0,1,2) unless we're merging a DDE record
+        if (PAGE != 'DataComparisonController:index') {
+            $params['instrument'] = $_GET['page'];
+            // Add status of data collection instrument for this record (0=Incomplete, 1=Unverified, 2=Complete)
+            $formStatusField = $_GET['page'].'_complete';
+            $params[$formStatusField] = $_POST[$formStatusField];
+        }
+        // Repeating events/instruments
+        if ($Proj->hasRepeatingFormsEvents()) {
+            if ($Proj->isRepeatingForm($_GET['event_id'], $_GET['page'])) {
+                $params['redcap_repeat_instrument'] = $_GET['page'];
+                $params['redcap_repeat_instance'] = $_GET['instance'];
+            }
+            elseif ($Proj->isRepeatingEvent($_GET['event_id'])) {
+                $params['redcap_repeat_instance'] = $_GET['instance'];
+            }
+        }
+        // Set timeout value for http request
+        $timeout = 10; // seconds
+        // If $data_entry_trigger_url is a relative URL, then prepend with server domain
+        $pre_url = "";
+        if (substr($data_entry_trigger_url, 0, 1) == "/") {
+            $pre_url = (SSL ? "https://" : "http://") . SERVER_NAME;
+        }
+        // Send Post request
+        $response = http_post($pre_url . $data_entry_trigger_url, $params, $timeout);
+        // Return boolean for success
+        return !!$response;
+    }*/
 }
