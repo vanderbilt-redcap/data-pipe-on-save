@@ -110,8 +110,8 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 //echo "New record: $newRecordName<br/>";
                 if ($newRecordName != "") {
                     $destRecordExists = false;
-                    $targetRecordSql = "SELECT record FROM redcap_data WHERE project_id='$destinationProjectID' && record='$newRecordName' LIMIT 1";
-                    $result = db_query($targetRecordSql);
+                    $targetRecordSql = "SELECT record FROM redcap_data WHERE project_id=? && record=? LIMIT 1";
+                    $result = $this->query($targetRecordSql,[$destinationProjectID,$newRecordName]);
 
                     while ($row = db_fetch_assoc($result)) {
                         if ($row['record'] == $newRecordName) {
@@ -558,16 +558,17 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
     }
 
     // If the Data Entry Trigger is enabled, then send HTTP Post request to specified URL
-    /*public static function launchDataEntryTrigger($data_entry_trigger_url)
+    public static function triggerOnSaves(\Project $project, $record, $event_id, $group_id = "", $instrument = "", $repeat_instance = 1, $status = 0)
     {
-        global $table_pk, $longitudinal, $Proj, $data_entry_trigger_enabled, $redcap_version;
-
+        global $data_entry_trigger_enabled, $redcap_version;
+        $data_entry_trigger_url = $project['data_entry_trigger_url'];
+        $table_pk = $project->table_pk;
+        $longitudinal = $project->longitudinal;
         // First, check if enabled
         if (!$data_entry_trigger_enabled || $data_entry_trigger_url == '') {
             return false;
         }
-        // Set record name
-        $record = $_POST[$table_pk];
+
         // Build HTTP Post request parameters to send
         $params = array('redcap_url'=>APP_PATH_WEBROOT_FULL,
             'project_url'=>APP_PATH_WEBROOT_FULL."redcap_v{$redcap_version}/index.php?pid=".PROJECT_ID,
@@ -575,42 +576,32 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         // Add record name (using its literal variable name as key)
         $params['record'] = $record;
         // If longitudinal, include unique event name
-        if ($longitudinal) {
-            $params['redcap_event_name'] = $Proj->getUniqueEventNames($_GET['event_id']);
+        if ($longitudinal && is_numeric($event_id)) {
+            $params['redcap_event_name'] = $project->getUniqueEventNames($event_id);
         }
         // Add unique data access group, if record is in a DAG
-        if (PAGE != 'surveys/index.php' && isset($_POST['__GROUPID__']) && !empty($_POST['__GROUPID__'])) {
+        if ($group_id != "" && is_numeric($group_id)) {
             // Data Entry Form: Get group_id from Post value
-            $unique_group_name = $Proj->getUniqueGroupNames($_POST['__GROUPID__']);
-        } elseif (PAGE == 'surveys/index.php') {
-            // Survey: Check if DAGs exist and get DAG manually from back-end
-            $uniqueDags = $Proj->getUniqueGroupNames();
-            if (!empty($uniqueDags)) {
-                // Query back-end to get DAG for this record (if in a DAG)
-                $group_id = Records::getRecordGroupId(PROJECT_ID, $record);
-                if ($group_id !== false) {
-                    $unique_group_name = $Proj->getUniqueGroupNames($group_id);
-                }
-            }
+            $unique_group_name = $project->getUniqueGroupNames($group_id);
         }
         if (isset($unique_group_name) && !empty($unique_group_name)) {
             $params['redcap_data_access_group'] = $unique_group_name;
         }
         // Add name of data collection instrument and its status value (0,1,2) unless we're merging a DDE record
-        if (PAGE != 'DataComparisonController:index') {
-            $params['instrument'] = $_GET['page'];
+        if ($instrument != "" && is_numeric($status)) {
+            $params['instrument'] = $instrument;
             // Add status of data collection instrument for this record (0=Incomplete, 1=Unverified, 2=Complete)
-            $formStatusField = $_GET['page'].'_complete';
-            $params[$formStatusField] = $_POST[$formStatusField];
+            $formStatusField = $instrument.'_complete';
+            $params[$formStatusField] = $status;
         }
         // Repeating events/instruments
-        if ($Proj->hasRepeatingFormsEvents()) {
-            if ($Proj->isRepeatingForm($_GET['event_id'], $_GET['page'])) {
-                $params['redcap_repeat_instrument'] = $_GET['page'];
-                $params['redcap_repeat_instance'] = $_GET['instance'];
+        if ($project->hasRepeatingFormsEvents() && $instrument != "") {
+            if ($project->isRepeatingForm($event_id, $instrument)) {
+                $params['redcap_repeat_instrument'] = $instrument;
+                $params['redcap_repeat_instance'] = $repeat_instance;
             }
-            elseif ($Proj->isRepeatingEvent($_GET['event_id'])) {
-                $params['redcap_repeat_instance'] = $_GET['instance'];
+            elseif ($project->isRepeatingEvent($event_id)) {
+                $params['redcap_repeat_instance'] = $repeat_instance;
             }
         }
         // Set timeout value for http request
@@ -624,5 +615,5 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $response = http_post($pre_url . $data_entry_trigger_url, $params, $timeout);
         // Return boolean for success
         return !!$response;
-    }*/
+    }
 }
