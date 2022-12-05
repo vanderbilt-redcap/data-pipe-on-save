@@ -87,6 +87,16 @@
           "repeatable": false
         },
         {
+          "key": "trigger-on-save",
+          "name": "Trigger 'On Save' Events When Creating Record",
+          "type":"radio",
+          "choices": [
+            {"value":"yes", "name":"Yes"},
+            {"value":"no","name":"No"}
+          ],
+          "repeatable": false
+        },
+        {
           "key": "repeating-text",
           "name": "Settings to Detail Repeating Instances Behavior",
           "type": "descriptive"

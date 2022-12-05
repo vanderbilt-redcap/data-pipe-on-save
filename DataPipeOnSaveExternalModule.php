@@ -47,6 +47,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $recordNames = $this->getProjectSetting("new_record",$project_id);
         $overwrites = $this->getProjectSetting("overwrite-record",$project_id);
         $pipeAllEvents = $this->getProjectSetting("pipe-all-events",$project_id);
+        $triggerOnSaves = $this->getProjectSetting("trigger-on-save",$project_id);
         $sourceFields = $this->getProjectSetting("source-field",$project_id);
         $destinationFields = $this->getProjectSetting("destination-field",$project_id);
 
@@ -67,6 +68,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $recordName = $recordNames[$topIndex];
             $overwrite = $overwrites[$topIndex];
             $pipeAllEvent = $pipeAllEvents[$topIndex];
+            $triggerOnSave = $triggerOnSaves[$topIndex];
             $createNewInstance = $createNewInstances[$topIndex];
             $sourceInstanceField = $sourceInstanceFields[$topIndex];
             $destInstanceField = $destInstanceFields[$topIndex];
@@ -155,6 +157,12 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                 mail($errorEmail, $this->getModuleName() . " Module Error", $message, $headers);
                             }
                         }
+                        else {
+                            if ($triggerOnSave == "yes") {
+                                //TODO Need to add method to determine event ID, instance, instrument for saves
+                                $this->triggerOnSaves($destinationProject,$newRecordName,$destinationProject->firstEventId);
+                            }
+                        }
                         /*echo "<pre>";
                         print_r($results);
                         echo "</pre>";*/
@@ -170,7 +178,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         }
 
         $fieldName = db_real_escape_string($fieldName);
-        $result = $this->query("select element_type from redcap_metadata where project_id = " . $this->getProjectId() . " and field_name = '$fieldName'");
+        $result = $this->query("select element_type from redcap_metadata where project_id = ? and field_name = ?",[$this->getProjectId(),$fieldName]);
         $row = $result->fetch_assoc();
 
         return $row['element_type'];
@@ -558,7 +566,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
     }
 
     // If the Data Entry Trigger is enabled, then send HTTP Post request to specified URL
-    public static function triggerOnSaves(\Project $project, $record, $event_id, $group_id = "", $instrument = "", $repeat_instance = 1, $status = 0)
+    function triggerOnSaves(\Project $project, $record, $event_id, $group_id = "", $instrument = "", $repeat_instance = 1, $status = 0)
     {
         global $data_entry_trigger_enabled, $redcap_version;
         $data_entry_trigger_url = $project['data_entry_trigger_url'];
