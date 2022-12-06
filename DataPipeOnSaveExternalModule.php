@@ -160,7 +160,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                         else {
                             if ($triggerOnSave == "yes") {
                                 //TODO Need to add method to determine event ID, instance, instrument for saves
-                                $this->triggerOnSaves($destinationProject,$newRecordName,$destinationProject->firstEventId);
+                                $triggerResult = $this->triggerOnSaves($destinationProject,$newRecordName,$destinationProject->firstEventId);
                             }
                         }
                         /*echo "<pre>";
@@ -569,10 +569,12 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
     function triggerOnSaves(\Project $project, $record, $event_id, $group_id = "", $instrument = "", $repeat_instance = 1, $status = 0)
     {
         global $data_entry_trigger_enabled, $redcap_version;
-        $data_entry_trigger_url = $project['data_entry_trigger_url'];
+        $data_entry_trigger_url = $project->project['data_entry_trigger_url'];
+
         $table_pk = $project->table_pk;
         $longitudinal = $project->longitudinal;
         // First, check if enabled
+        echo (!$data_entry_trigger_enabled ? "No enabled" : "Enabled")." and $data_entry_trigger_url<br/>";
         if (!$data_entry_trigger_enabled || $data_entry_trigger_url == '') {
             return false;
         }
