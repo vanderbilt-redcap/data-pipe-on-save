@@ -56,7 +56,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $destInstanceFields = $this->getProjectSetting("dest-instance-field",$project_id);
 
         $currentProject = new \Project($project_id);
-        $fieldsOnForm = array_keys($currentProject->forms[$instrument]['fields']);
+        $fieldsOnForm = (is_array($currentProject->forms[$instrument]['fields']) ? array_keys($currentProject->forms[$instrument]['fields']) : array());
         
         $eventName = $currentProject->uniqueEventNames[$event_id];
 
