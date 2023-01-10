@@ -88,11 +88,14 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
-            $results = json_decode(REDCap::getData($project_id, 'json', $record, array($triggerField,$sourceInstanceField), $event_id),true);
+            $results = json_decode(\Records::getData(array(
+                'project_id'=>$project_id,'return_format'=>'json','records'=>array($record),'fields'=>array($currentProject->table_pk,$triggerField,$sourceInstanceField),
+                'events'=>$event_id,'includeRepeatingFields'=>true
+            )),true);
             $triggerFieldValue = "";
 
             foreach ($results as $indexData) {
-                if ((!isset($indexData['redcap_event_name']) || $indexData['redcap_event_name'] == $eventName) && $indexData[$triggerField] != "") {
+                if ((!isset($indexData['redcap_event_name']) || $indexData['redcap_event_name'] == $eventName) && $indexData[$triggerField] != "" && (!isset($indexData['redcap_repeat_instance']) || $indexData['redcap_repeat_instance'] == $repeat_instance)) {
                     $triggerFieldValue = $indexData[$triggerField];
                 }
                 if (!empty($instanceMatching) && isset($indexData[$sourceInstanceField]) && $indexData[$sourceInstanceField] != "") {
@@ -101,7 +104,8 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             $triggerFieldSet = false;
-            if ($triggerFieldValue == $triggerValue || ($triggerValue == ":is_empty:" && $triggerFieldValue === "") || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
+
+            if (($triggerValue != ":is_empty:" && $triggerValue != "" && $triggerValue == $triggerFieldValue) || ($triggerValue == ":is_empty:" && $triggerFieldValue === "") || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
                 $triggerFieldSet = true;
             }
 
