@@ -95,7 +95,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $triggerFieldValue = "";
 
             foreach ($results as $indexData) {
-                if ((!isset($indexData['redcap_event_name']) || $indexData['redcap_event_name'] == $eventName) && $indexData[$triggerField] != "" && (!isset($indexData['redcap_repeat_instance']) || $indexData['redcap_repeat_instance'] == $repeat_instance)) {
+                if (((!isset($indexData['redcap_event_name']) || $indexData['redcap_event_name'] == "") || $indexData['redcap_event_name'] == $eventName) && $indexData[$triggerField] != "" && ((!isset($indexData['redcap_repeat_instance']) || $indexData['redcap_repeat_instance'] == "") || $indexData['redcap_repeat_instance'] == $repeat_instance)) {
                     $triggerFieldValue = $indexData[$triggerField];
                 }
                 if (!empty($instanceMatching) && isset($indexData[$sourceInstanceField]) && $indexData[$sourceInstanceField] != "") {
