@@ -58,7 +58,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $currentProject = new \Project($project_id);
         $fieldsOnForm = (is_array($currentProject->forms[$instrument]['fields']) ? array_keys($currentProject->forms[$instrument]['fields']) : array());
         
-        $eventName = $currentProject->uniqueEventNames[$event_id];
+        $eventName = $currentProject->getUniqueEventNames($event_id);
 
         $currentData = REDCap::getData($project_id, 'array', $record, array());
 
@@ -90,7 +90,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
             $results = json_decode(\Records::getData(array(
                 'project_id'=>$project_id,'return_format'=>'json','records'=>array($record),'fields'=>array($currentProject->table_pk,$triggerField,$sourceInstanceField),
-                'events'=>$event_id,'includeRepeatingFields'=>true
+                'events'=>$event_id,'includeRepeatingFields'=>true,'combine_checkbox_values'=>true
             )),true);
             $triggerFieldValue = "";
 
@@ -578,7 +578,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $table_pk = $project->table_pk;
         $longitudinal = $project->longitudinal;
         // First, check if enabled
-        echo (!$data_entry_trigger_enabled ? "No enabled" : "Enabled")." and $data_entry_trigger_url<br/>";
+
         if (!$data_entry_trigger_enabled || $data_entry_trigger_url == '') {
             return false;
         }
