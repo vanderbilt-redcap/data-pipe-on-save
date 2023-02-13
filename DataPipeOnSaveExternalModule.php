@@ -585,8 +585,8 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
         // Build HTTP Post request parameters to send
         $params = array('redcap_url'=>APP_PATH_WEBROOT_FULL,
-            'project_url'=>APP_PATH_WEBROOT_FULL."redcap_v{$redcap_version}/index.php?pid=".PROJECT_ID,
-            'project_id'=>PROJECT_ID, 'username'=>USERID);
+            'project_url'=>APP_PATH_WEBROOT_FULL."redcap_v{$redcap_version}/index.php?pid=".$project->project_id,
+            'project_id'=>$project->project_id, 'username'=>USERID);
         // Add record name (using its literal variable name as key)
         $params['record'] = $record;
         // If longitudinal, include unique event name
