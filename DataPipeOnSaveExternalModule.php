@@ -359,7 +359,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                                     if ($destFieldName != "" && ((!is_array($fieldValue) && $fieldValue != "") || (is_array($fieldValue) && count(array_filter($fieldValue)) !== 0))) {
                                                         $destFieldInstrument = $destMeta[$destFieldName]['form_name'];
                                                         //echo "Before save $destFieldName, $fieldValue: ".time()."<br/>";
-                                                        $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
+                                                        $destData = $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
                                                         //echo "After save: ".time()."<br/>";
                                                     }
                                                 }
@@ -390,7 +390,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                                 if ($destFieldName != "" && ((!is_array($fieldValue) && $fieldValue != "") || (is_array($fieldValue) && count(array_filter($fieldValue)) !== 0))) {
                                     $destFieldInstrument = $destMeta[$destFieldName]['form_name'];
                                     //echo "Before save single $destFieldName, $fieldValue: ".time()."<br/>";
-                                    $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
+                                    $destData = $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldValue, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
                                     //echo "After save single: ".time()."<br/>";
                                 }
                             }
@@ -404,7 +404,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         return $destData;
     }
 
-    function updateDestinationData(&$destData,\Project $sourceProject, \Project $destProject, $destFieldName, $srcFieldValue, $destRecord, $destEvent,$destRepeat = 1) {
+    function updateDestinationData($destData,\Project $sourceProject, \Project $destProject, $destFieldName, $srcFieldValue, $destRecord, $destEvent,$destRepeat = 1) {
         $destMeta = $destProject->metadata;
         $destEventForms = $destProject->eventsForms[$destEvent];
 
@@ -428,13 +428,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $destData[$destRecord][$destEvent][$destFieldName] = $srcFieldValue;
             }
         }
-        /*echo "<pre>";
-        print_r($destData);
-        echo "</pre>";*/
-        //$results = \Records::saveData($destProject->project_id, 'array', $destData);
-        /*echo "<pre>";
-        print_r($results);
-        echo "</pre>";*/
         return $destData;
     }
 
