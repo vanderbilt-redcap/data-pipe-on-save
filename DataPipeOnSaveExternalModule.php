@@ -124,14 +124,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                             $destRecordExists = true;
                         }
                     }
-                    
-                    if ($debug == "1") {
-                        $this->log("Checking values for pid $destinationProjectID", [
-                            '$targetProjectID' => $destinationProjectID,
-                            '$destinationRecordID' => $newRecordName,
-                            '$destRecordExists' => $destRecordExists
-                        ]);
-                    }
 
                     if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
                         //echo "Before transfer: ".time()."<br/>";
@@ -162,6 +154,13 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                             }
                         }
                         else {
+                            if ($debug == "1") {
+                                $this->log("Checking values for pid $destinationProjectID", [
+                                    '$targetProjectID' => $destinationProjectID,
+                                    '$destinationRecordID' => $results['id'],
+                                    '$destRecordExists' => $destRecordExists
+                                ]);
+                            }
                             if ($triggerOnSave == "yes") {
                                 //TODO Need to add method to determine event ID, instance, instrument for saves
                                 $triggerResult = $this->triggerOnSaves($destinationProject,$newRecordName,$destinationProject->firstEventId);
@@ -506,6 +505,24 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 }
 
                 $result = \REDCap::saveData($source_project_id, 'array', $saveData, 'overwrite');
+            }
+            elseif ($match == "dest_record") {
+                $setting = "";
+                if (isset($instance_matching['dest']) && $instance_matching['dest'] != "" && isset($instance_matching['value']) && $instance_matching['value'] != "") {
+                    $sql = "SELECT record
+						FROM redcap_data
+						WHERE project_id = ?
+                        AND field_name = ?
+                        AND value = ?
+                        LIMIT 1;";
+                    $result = $this->query($sql, [$project_id, $instance_matching['dest'], $instance_matching['value']]);
+                    while ($row = $result->fetch_assoc()) {
+                        if ($row['record'] != "") {
+                            $setting = $row['record'];
+                            break;
+                        }
+                    }
+                }
             }
         }
         return $setting;
