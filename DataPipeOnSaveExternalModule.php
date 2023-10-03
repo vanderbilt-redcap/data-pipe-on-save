@@ -73,21 +73,13 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $sourceInstanceField = $sourceInstanceFields[$topIndex];
             $destInstanceField = $destInstanceFields[$topIndex];
             $instanceMatching = array();
+
+            if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
+
             if ($createNewInstance == "yes") {
                 $instanceMatching = array('source'=>$sourceInstanceField,'dest'=>$destInstanceField);
             }
 
-            $destinationProject = new \Project($destinationProjectID);
-            $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : array_keys($currentProject->metadata));
-            $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : array_intersect($currentSourceFields,array_keys($destinationProject->metadata)));
-            if ($sourceInstanceField != "") {
-                $currentSourceFields[] = $sourceInstanceField;
-            }
-            if ($destInstanceField != "") {
-                $currentDestinationFields[] = $destInstanceField;
-            }
-
-            if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
             $results = json_decode(\Records::getData(array(
                 'project_id'=>$project_id,'return_format'=>'json','records'=>array($record),'fields'=>array($currentProject->table_pk,$triggerField,$sourceInstanceField),
                 'events'=>$event_id,'includeRepeatingFields'=>true,'combine_checkbox_values'=>true
@@ -110,6 +102,15 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             if ($triggerFieldSet && $recordName != "") {
+                $destinationProject = new \Project($destinationProjectID);
+                $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : array_keys($currentProject->metadata));
+                $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : array_intersect($currentSourceFields,array_keys($destinationProject->metadata)));
+                if ($sourceInstanceField != "") {
+                    $currentSourceFields[] = $sourceInstanceField;
+                }
+                if ($destInstanceField != "") {
+                    $currentDestinationFields[] = $destInstanceField;
+                }
                 //TODO Need to have logging or some other means of mapping source record to an existing dest record, save a record or just use a module log?
                 // Only need in the case of there being UID setting?
                 $newRecordName = $this->getNewRecordName($destinationProjectID,$project_id,$instanceMatching,$record,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
