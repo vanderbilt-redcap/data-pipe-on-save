@@ -41,19 +41,24 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $debug = $this->getProjectSetting("enable_debug_logging");
         $emailErrors = $this->getProjectSetting("error_email");
 
-        $destinationProjectIDs = $this->getProjectSetting("destination_project",$project_id);
-        $triggerFields = $this->getProjectSetting("field_flag",$project_id);
-        $triggerValues = $this->getProjectSetting("value_flag",$project_id);
-        $recordNames = $this->getProjectSetting("new_record",$project_id);
-        $overwrites = $this->getProjectSetting("overwrite-record",$project_id);
-        $pipeAllEvents = $this->getProjectSetting("pipe-all-events",$project_id);
-        $triggerOnSaves = $this->getProjectSetting("trigger-on-save",$project_id);
-        $sourceFields = $this->getProjectSetting("source-field",$project_id);
-        $destinationFields = $this->getProjectSetting("destination-field",$project_id);
-
-        $createNewInstances = $this->getProjectSetting("create-new-instance",$project_id);
-        $sourceInstanceFields = $this->getProjectSetting("source-instance-field",$project_id);
-        $destInstanceFields = $this->getProjectSetting("dest-instance-field",$project_id);
+        $settingsFileID = $this->getProjectSetting('settings_file',$project_id);
+        if (!is_null($settingsFileID) && is_numeric($settingsFileID)) {
+            list($destinationProjectIDs,$triggerFields,$triggerValues,$recordNames,$overwrites,$pipeAllEvents,$triggerOnSaves,$createNewInstances,$sourceInstanceFields,$destInstanceFields,$sourceFields,$destinationFields) = $this->loadSettingsFromFile($settingsFileID);
+        }
+        else {
+            $destinationProjectIDs = $this->getProjectSetting("destination_project",$project_id);
+            $triggerFields = $this->getProjectSetting("field_flag",$project_id);
+            $triggerValues = $this->getProjectSetting("value_flag",$project_id);
+            $recordNames = $this->getProjectSetting("new_record",$project_id);
+            $overwrites = $this->getProjectSetting("overwrite-record",$project_id);
+            $pipeAllEvents = $this->getProjectSetting("pipe-all-events",$project_id);
+            $triggerOnSaves = $this->getProjectSetting("trigger-on-save",$project_id);
+            $createNewInstances = $this->getProjectSetting("create-new-instance",$project_id);
+            $sourceInstanceFields = $this->getProjectSetting("source-instance-field",$project_id);
+            $destInstanceFields = $this->getProjectSetting("dest-instance-field",$project_id);
+            $sourceFields = $this->getProjectSetting("source-field",$project_id);
+            $destinationFields = $this->getProjectSetting("destination-field",$project_id);
+        }
 
         $currentProject = new \Project($project_id);
         $fieldsOnForm = (is_array($currentProject->forms[$instrument]['fields']) ? array_keys($currentProject->forms[$instrument]['fields']) : array());
@@ -63,6 +68,8 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $currentData = REDCap::getData($project_id, 'array', $record, array());
 
         foreach ($destinationProjectIDs as $topIndex => $destinationProjectID) {
+            if (!is_numeric($destinationProjectID)) continue;
+
             $triggerField = $triggerFields[$topIndex];
             $triggerValue = $triggerValues[$topIndex];
             $recordName = $recordNames[$topIndex];
@@ -72,6 +79,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $createNewInstance = $createNewInstances[$topIndex];
             $sourceInstanceField = $sourceInstanceFields[$topIndex];
             $destInstanceField = $destInstanceFields[$topIndex];
+
             $instanceMatching = array();
 
             if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
@@ -640,5 +648,65 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $response = http_post($pre_url . $data_entry_trigger_url, $params, $timeout);
         // Return boolean for success
         return !!$response;
+    }
+
+    function loadSettingsFromFile($fileID) {
+        $returnArray = array_fill(0,12,array());
+
+        $splitEachValue = function($input) {
+            return array_map('str_getcsv',$input);
+        };
+
+        if (!is_null($fileID) && is_numeric($fileID)) {
+            $docName = \Files::getEdocName($fileID,true);
+            $settingsFile = EDOC_PATH . $docName;
+            if (strpos($settingsFile,".csv") !== false && file_exists($settingsFile) && is_file($settingsFile)) {
+                if (($handle = fopen($settingsFile,"r")) !== false) {
+                    while (($data = fgetcsv($handle)) !== false) {
+                        $settingType = array_shift($data);
+                        switch ($settingType) {
+                            case "destination_project":
+                                $returnArray[0] = $data;
+                                break;
+                            case "field_flag":
+                                $returnArray[1] = $data;
+                                break;
+                            case "value_flag":
+                                $returnArray[2] = $data;
+                                break;
+                            case "new_record":
+                                $returnArray[3] = $data;
+                                break;
+                            case "overwrite-record":
+                                $returnArray[4] = $data;
+                                break;
+                            case "pipe-all-events":
+                                $returnArray[5] = $data;
+                                break;
+                            case "trigger-on-save":
+                                $returnArray[6] = $data;
+                                break;
+                            case "create-new-instance":
+                                $returnArray[7] = $data;
+                                break;
+                            case "source-instance-field":
+                                $returnArray[8] = $data;
+                                break;
+                            case "dest-instance-field":
+                                $returnArray[9] = $data;
+                                break;
+                            case "source-field":
+                                $returnArray[10] = $splitEachValue($data);
+                                break;
+                            case "destination-field":
+                                $returnArray[11] = $splitEachValue($data);
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $returnArray;
     }
 }

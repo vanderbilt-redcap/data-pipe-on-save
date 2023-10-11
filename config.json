@@ -39,6 +39,12 @@
       "type": "checkbox"
     },
     {
+      "key": "settings_file",
+      "name": "File for Large Number of Settings (Advanced Users Only!)",
+      "type": "file",
+      "super-users-only": true
+    },
+    {
       "key": "destination_projects",
       "name": "Destination Projects",
       "repeatable": true,
