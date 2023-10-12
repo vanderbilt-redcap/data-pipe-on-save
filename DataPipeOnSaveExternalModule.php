@@ -408,6 +408,12 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
         }
         //echo "After data looping: ".time()."<br/>";
+        foreach ($fieldsToUse as $fIndex => $fieldToUse) {
+            if (\Piping::containsSpecialTags($fieldToUse) && isset($destinationFields[$fIndex])) {
+                $specialValue = \Piping::pipeSpecialTags($fieldToUse,$sourceProject->project_id,array_keys($sourceData)[0],$eventToUse,$instanceToUse);
+                $destData = $this->updateDestinationData($destData,$sourceProject,$destProject,$destinationFields[$fIndex],$specialValue,$recordToUse,$destEventID,($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
+            }
+        }
 
         return $destData;
     }
