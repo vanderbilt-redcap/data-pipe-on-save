@@ -22,6 +22,20 @@
 
   "links": {
     "project": [
+      {
+        "name": "Importing Settings",
+        "key": "importsettings",
+        "icon": "fa-receipt",
+        "url": "interface/import_settings.php",
+        "show-header-and-footer": false
+      },
+      {
+        "name": "Manually Trigger Data Piping",
+        "key": "triggerpiping",
+        "icon": "fa-receipt",
+        "url": "interface/trigger_piping.php",
+        "show-header-and-footer": false
+      }
     ]
   },
 
@@ -37,12 +51,6 @@
       "key": "enable_debug_logging",
       "name": "Enable Debug Logging",
       "type": "checkbox"
-    },
-    {
-      "key": "settings_file",
-      "name": "File for Large Number of Settings (Advanced Users Only!)",
-      "type": "file",
-      "super-users-only": true
     },
     {
       "key": "destination_projects",

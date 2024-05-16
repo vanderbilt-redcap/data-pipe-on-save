@@ -41,24 +41,20 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $debug = $this->getProjectSetting("enable_debug_logging");
         $emailErrors = $this->getProjectSetting("error_email");
 
-        $settingsFileID = $this->getProjectSetting('settings_file',$project_id);
-        if (!is_null($settingsFileID) && is_numeric($settingsFileID)) {
-            list($destinationProjectIDs,$triggerFields,$triggerValues,$recordNames,$overwrites,$pipeAllEvents,$triggerOnSaves,$createNewInstances,$sourceInstanceFields,$destInstanceFields,$sourceFields,$destinationFields) = $this->loadSettingsFromFile($settingsFileID);
-        }
-        else {
-            $destinationProjectIDs = $this->getProjectSetting("destination_project",$project_id);
-            $triggerFields = $this->getProjectSetting("field_flag",$project_id);
-            $triggerValues = $this->getProjectSetting("value_flag",$project_id);
-            $recordNames = $this->getProjectSetting("new_record",$project_id);
-            $overwrites = $this->getProjectSetting("overwrite-record",$project_id);
-            $pipeAllEvents = $this->getProjectSetting("pipe-all-events",$project_id);
-            $triggerOnSaves = $this->getProjectSetting("trigger-on-save",$project_id);
-            $createNewInstances = $this->getProjectSetting("create-new-instance",$project_id);
-            $sourceInstanceFields = $this->getProjectSetting("source-instance-field",$project_id);
-            $destInstanceFields = $this->getProjectSetting("dest-instance-field",$project_id);
-            $sourceFields = $this->getProjectSetting("source-field",$project_id);
-            $destinationFields = $this->getProjectSetting("destination-field",$project_id);
-        }
+        //TODO Should move settings pull and data pull to a class property so this doesn't have to run every single time on mass-triggering data piping
+        $destinationProjectIDs = $this->getProjectSetting("destination_project",$project_id);
+        $triggerFields = $this->getProjectSetting("field_flag",$project_id);
+        $triggerValues = $this->getProjectSetting("value_flag",$project_id);
+        $recordNames = $this->getProjectSetting("new_record",$project_id);
+        $overwrites = $this->getProjectSetting("overwrite-record",$project_id);
+        $pipeAllEvents = $this->getProjectSetting("pipe-all-events",$project_id);
+        $triggerOnSaves = $this->getProjectSetting("trigger-on-save",$project_id);
+        $sourceFields = $this->getProjectSetting("source-field",$project_id);
+        $destinationFields = $this->getProjectSetting("destination-field",$project_id);
+
+        $createNewInstances = $this->getProjectSetting("create-new-instance",$project_id);
+        $sourceInstanceFields = $this->getProjectSetting("source-instance-field",$project_id);
+        $destInstanceFields = $this->getProjectSetting("dest-instance-field",$project_id);
 
         $currentProject = new \Project($project_id);
         $fieldsOnForm = (is_array($currentProject->forms[$instrument]['fields']) ? array_keys($currentProject->forms[$instrument]['fields']) : array());
@@ -68,8 +64,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         $currentData = REDCap::getData($project_id, 'array', $record, array());
 
         foreach ($destinationProjectIDs as $topIndex => $destinationProjectID) {
-            if (!is_numeric($destinationProjectID)) continue;
-
             $triggerField = $triggerFields[$topIndex];
             $triggerValue = $triggerValues[$topIndex];
             $recordName = $recordNames[$topIndex];
@@ -79,15 +73,22 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $createNewInstance = $createNewInstances[$topIndex];
             $sourceInstanceField = $sourceInstanceFields[$topIndex];
             $destInstanceField = $destInstanceFields[$topIndex];
-
             $instanceMatching = array();
-
-            if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
-
             if ($createNewInstance == "yes") {
                 $instanceMatching = array('source'=>$sourceInstanceField,'dest'=>$destInstanceField);
             }
 
+            $destinationProject = new \Project($destinationProjectID);
+            $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : array_keys($currentProject->metadata));
+            $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : array_intersect($currentSourceFields,array_keys($destinationProject->metadata)));
+            if ($sourceInstanceField != "") {
+                $currentSourceFields[] = $sourceInstanceField;
+            }
+            if ($destInstanceField != "") {
+                $currentDestinationFields[] = $destInstanceField;
+            }
+
+            if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
             $results = json_decode(\Records::getData(array(
                 'project_id'=>$project_id,'return_format'=>'json','records'=>array($record),'fields'=>array($currentProject->table_pk,$triggerField,$sourceInstanceField),
                 'events'=>$event_id,'includeRepeatingFields'=>true,'combine_checkbox_values'=>true
@@ -110,19 +111,10 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             }
 
             if ($triggerFieldSet && $recordName != "") {
-                $destinationProject = new \Project($destinationProjectID);
-                $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : array_keys($currentProject->metadata));
-                $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : array_intersect($currentSourceFields,array_keys($destinationProject->metadata)));
-                if ($sourceInstanceField != "") {
-                    $currentSourceFields[] = $sourceInstanceField;
-                }
-                if ($destInstanceField != "") {
-                    $currentDestinationFields[] = $destInstanceField;
-                }
                 //TODO Need to have logging or some other means of mapping source record to an existing dest record, save a record or just use a module log?
                 // Only need in the case of there being UID setting?
                 $newRecordName = $this->getNewRecordName($destinationProjectID,$project_id,$instanceMatching,$record,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
-                //echo "New record: $newRecordName<br/>";
+
                 if ($newRecordName != "") {
                     $destRecordExists = false;
                     $targetRecordSql = "SELECT record FROM redcap_data WHERE project_id=? && record=? LIMIT 1";
@@ -407,13 +399,35 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 }
             }
         }
-        //echo "After data looping: ".time()."<br/>";
-        foreach ($fieldsToUse as $fIndex => $fieldToUse) {
-            if (\Piping::containsSpecialTags($fieldToUse) && isset($destinationFields[$fIndex])) {
-                $specialValue = \Piping::pipeSpecialTags($fieldToUse,$sourceProject->project_id,array_keys($sourceData)[0],$eventToUse,$instanceToUse);
-                $destData = $this->updateDestinationData($destData,$sourceProject,$destProject,$destinationFields[$fIndex],$specialValue,$recordToUse,$destEventID,($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
+        foreach ($fieldsToUse as $fieldIndex => $fieldName) {
+            $matchesFound = false;
+            $destFieldName = $destinationFields[$fieldIndex];
+            $destFieldInstrument = $destMeta[$destFieldName]['form_name'];
+            $destEventID = $eventMapping[$eventToUse];
+
+            preg_match_all("/\[(.*?)\]/",$fieldName,$pipeMatches);
+            if ($pipeMatches && is_array($pipeMatches) && !empty($pipeMatches[0])) {
+                $matchesFound = true;
+                $fieldName = \Piping::replaceVariablesInLabel($fieldName,$recordToUse,$eventToUse,$instanceToUse,$sourceData,true,$sourceProject->project_id,false);
+            }
+            preg_match_all('#(?<=:).+?(?=:)#',$fieldName,$matches);
+            foreach ($matches[0] as $index => $match) {
+                if ($index % 2 != 0) continue;
+                if (strpos($match, "value=") === 0) {
+                    $matchesFound = true;
+                    $split = explode("=", $match);
+                    $fieldName = str_replace(":".$match.":",$split[1],$fieldName);
+                }
+            }
+            if ($matchesFound) {
+                $destData = $this->updateDestinationData($destData,$sourceProject, $destProject, $destFieldName, $fieldName, $recordToUse, $destEventID, ($destInstanceInstrument == $destFieldInstrument ? $destInstance : 1));
             }
         }
+        /*echo "Dest data is now:<br/>";
+        echo "<pre>";
+        print_r($destData);
+        echo "</pre>";*/
+        //echo "After data looping: ".time()."<br/>";
 
         return $destData;
     }
@@ -446,7 +460,6 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
     }
 
     function saveDestinationData($project_id, $destData) {
-        $results = "";
         $results = \Records::saveData($project_id, 'array', $destData);
         return $results;
     }
@@ -656,63 +669,45 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         return !!$response;
     }
 
-    function loadSettingsFromFile($fileID) {
-        $returnArray = array_fill(0,12,array());
+    function importSettingsFromCSV($fileSettings,$triggerSavesForRecords = false) {
+        $validSettingKeys = [
+            'destination_project','field_flag','value_flag','new_record','overwrite-record',
+            'pipe-all-events','trigger-on-save','create-new-instance','source-instance-field',
+            'dest-instance-field','source-field','destination-field','pipe_fields','destination_projects'
+        ];
+        $finalSettings = array();
+        foreach ($fileSettings as $line) {
+            if (!is_array($line)) continue;
+            if (!in_array($line[0],$validSettingKeys)) continue;
 
-        $splitEachValue = function($input) {
-            return array_map('str_getcsv',$input);
-        };
-
-        if (!is_null($fileID) && is_numeric($fileID)) {
-            $docName = \Files::getEdocName($fileID,true);
-            $settingsFile = EDOC_PATH . $docName;
-            if (strpos($settingsFile,".csv") !== false && file_exists($settingsFile) && is_file($settingsFile)) {
-                if (($handle = fopen($settingsFile,"r")) !== false) {
-                    while (($data = fgetcsv($handle)) !== false) {
-                        $settingType = array_shift($data);
-                        switch ($settingType) {
-                            case "destination_project":
-                                $returnArray[0] = $data;
-                                break;
-                            case "field_flag":
-                                $returnArray[1] = $data;
-                                break;
-                            case "value_flag":
-                                $returnArray[2] = $data;
-                                break;
-                            case "new_record":
-                                $returnArray[3] = $data;
-                                break;
-                            case "overwrite-record":
-                                $returnArray[4] = $data;
-                                break;
-                            case "pipe-all-events":
-                                $returnArray[5] = $data;
-                                break;
-                            case "trigger-on-save":
-                                $returnArray[6] = $data;
-                                break;
-                            case "create-new-instance":
-                                $returnArray[7] = $data;
-                                break;
-                            case "source-instance-field":
-                                $returnArray[8] = $data;
-                                break;
-                            case "dest-instance-field":
-                                $returnArray[9] = $data;
-                                break;
-                            case "source-field":
-                                $returnArray[10] = $splitEachValue($data);
-                                break;
-                            case "destination-field":
-                                $returnArray[11] = $splitEachValue($data);
-                                break;
-                        }
+            $currentKey = "";
+            $subIndex = 0;
+            foreach ($line as $index => $value) {
+                if ($value == "" || (is_array($value) && empty($value))) continue;
+                if ($index === 0) {
+                    $currentKey = $value;
+                    $subIndex = 0;
+                }
+                else {
+                    switch ($currentKey) {
+                        case "source-field":
+                        case "destination-field":
+                        case "pipe_fields":
+                            $finalSettings[$currentKey][$subIndex] = explode(",",$value);
+                            break;
+                        default:
+                            $finalSettings[$currentKey][$subIndex] = $value;
+                            break;
                     }
+                    $subIndex++;
                 }
             }
         }
-
-        return $returnArray;
+        
+        if (!empty($finalSettings)) {
+            foreach ($finalSettings as $key => $values) {
+                $this->setProjectSetting($key,$values,$this->getProjectId());
+            }
+        }
     }
 }
