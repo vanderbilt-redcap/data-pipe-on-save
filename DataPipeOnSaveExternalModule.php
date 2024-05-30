@@ -9,6 +9,8 @@ use REDCap;
 
 class DataPipeOnSaveExternalModule extends AbstractExternalModule
 {
+    private $settings = array();
+
     function redcap_data_entry_form($project_id, $record, $instrument, $event_id, $group_id = NULL, $repeat_instance = 1) {
         //The below code was necessary for resetting module settings for a project so it could be reset with all new records.
 
@@ -31,56 +33,54 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
     
     function redcap_save_record($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = "") {
         //echo "Started: ".time()."<br/>";
-        $this->pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance);
+        $this->pipeDataToDestinationProjects($project_id, [$record], $event_id, $instrument, $repeat_instance);
         //echo "Ended: ".time()."<br/>";
-        //$this->exitAfterHook();
+        $this->exitAfterHook();
     }
 
-    public function pipeDataToDestinationProjects($project_id, $record, $event_id, $instrument, $repeat_instance="") {
+    public function pipeDataToDestinationProjects($project_id, $records, $event_id, $instrument, $repeat_instance="") {
         //TODO Need to account for new feature of repeated saves generating new instances
-        $debug = $this->getProjectSetting("enable_debug_logging");
-        $emailErrors = $this->getProjectSetting("error_email");
 
-        //TODO Should move settings pull and data pull to a class property so this doesn't have to run every single time on mass-triggering data piping
-        $destinationProjectIDs = $this->getProjectSetting("destination_project",$project_id);
-        $triggerFields = $this->getProjectSetting("field_flag",$project_id);
-        $triggerValues = $this->getProjectSetting("value_flag",$project_id);
-        $recordNames = $this->getProjectSetting("new_record",$project_id);
-        $overwrites = $this->getProjectSetting("overwrite-record",$project_id);
-        $pipeAllEvents = $this->getProjectSetting("pipe-all-events",$project_id);
-        $triggerOnSaves = $this->getProjectSetting("trigger-on-save",$project_id);
-        $sourceFields = $this->getProjectSetting("source-field",$project_id);
-        $destinationFields = $this->getProjectSetting("destination-field",$project_id);
-
-        $createNewInstances = $this->getProjectSetting("create-new-instance",$project_id);
-        $sourceInstanceFields = $this->getProjectSetting("source-instance-field",$project_id);
-        $destInstanceFields = $this->getProjectSetting("dest-instance-field",$project_id);
+        $moduleSettings = $this->getPipingSettings($project_id);
 
         $currentProject = new \Project($project_id);
         $fieldsOnForm = (is_array($currentProject->forms[$instrument]['fields']) ? array_keys($currentProject->forms[$instrument]['fields']) : array());
-        
+
         $eventName = $currentProject->getUniqueEventNames($event_id);
 
-        $currentData = REDCap::getData($project_id, 'array', $record, array());
+        $saveData = [];
+        $totalBarcode = 0;
+        $image = $barcodeList = array();
 
-        foreach ($destinationProjectIDs as $topIndex => $destinationProjectID) {
-            $triggerField = $triggerFields[$topIndex];
-            $triggerValue = $triggerValues[$topIndex];
-            $recordName = $recordNames[$topIndex];
-            $overwrite = $overwrites[$topIndex];
-            $pipeAllEvent = $pipeAllEvents[$topIndex];
-            $triggerOnSave = $triggerOnSaves[$topIndex];
-            $createNewInstance = $createNewInstances[$topIndex];
-            $sourceInstanceField = $sourceInstanceFields[$topIndex];
-            $destInstanceField = $destInstanceFields[$topIndex];
+        foreach ($moduleSettings['destination_projects']['value'] as $index => $setting) {
+            if ($moduleSettings['destination_projects']['value'][$index] != "true") continue;
+
+            $destinationProjectID = $moduleSettings["destination_project"]['value'][$index];
+            $triggerField = $moduleSettings["field_flag"]['value'][$index];
+            $triggerValue = $moduleSettings["value_flag"]['value'][$index];
+            $recordName = $moduleSettings["new_record"]['value'][$index];
+            $overwrite = $moduleSettings["overwrite-record"]['value'][$index];
+            $pipeAllEvent = $moduleSettings["pipe-all-events"]['value'][$index];
+            $triggerOnSave = $moduleSettings["trigger-on-save"]['value'][$index];
+            $createNewInstance = $moduleSettings["create-new-instance"]['value'][$index];
+            $sourceInstanceField = $moduleSettings["source-instance-field"]['value'][$index];
+            $destInstanceField = $moduleSettings["dest-instance-field"]['value'][$index];
+            $sourceFields = $moduleSettings["source-field"]['value'][$index];
+            $destinationFields = $moduleSettings["destination-field"]['value'][$index];
+
+
+            if (!isset($saveData[$destinationProjectID])) {
+                $saveData[$destinationProjectID] = ['data' => [], 'triggerOnSave' => []];
+            }
+
             $instanceMatching = array();
             if ($createNewInstance == "yes") {
-                $instanceMatching = array('source'=>$sourceInstanceField,'dest'=>$destInstanceField);
+                $instanceMatching = array('source' => $sourceInstanceField, 'dest' => $destInstanceField);
             }
 
             $destinationProject = new \Project($destinationProjectID);
-            $currentSourceFields = ($sourceFields[$topIndex][0] != "" ? $sourceFields[$topIndex] : array_keys($currentProject->metadata));
-            $currentDestinationFields = ($destinationFields[$topIndex][0] != "" ? $destinationFields[$topIndex] : array_intersect($currentSourceFields,array_keys($destinationProject->metadata)));
+            $currentSourceFields = ($sourceFields[0] != "" ? $sourceFields : array_keys($currentProject->metadata));
+            $currentDestinationFields = ($destinationFields[0] != "" ? $destinationFields : array_intersect($currentSourceFields, array_keys($destinationProject->metadata)));
             if ($sourceInstanceField != "") {
                 $currentSourceFields[] = $sourceInstanceField;
             }
@@ -88,88 +88,112 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $currentDestinationFields[] = $destInstanceField;
             }
 
-            if (!in_array($triggerField,$fieldsOnForm) && $triggerField != "") continue;
-            $results = json_decode(\Records::getData(array(
-                'project_id'=>$project_id,'return_format'=>'json','records'=>array($record),'fields'=>array($currentProject->table_pk,$triggerField,$sourceInstanceField),
-                'events'=>$event_id,'includeRepeatingFields'=>true,'combine_checkbox_values'=>true
-            )),true);
-            $triggerFieldValue = "";
+            if (!in_array($triggerField, $fieldsOnForm) && $triggerField != "") continue;
+            foreach ($records as $record) {
+                $results = json_decode(\Records::getData(array(
+                    'project_id' => $project_id, 'return_format' => 'json', 'records' => array($record), 'fields' => array($currentProject->table_pk, $triggerField, $sourceInstanceField),
+                    'events' => $event_id, 'includeRepeatingFields' => true, 'combine_checkbox_values' => true
+                )), true);
+                $triggerFieldValue = "";
 
-            foreach ($results as $indexData) {
-                if (((!isset($indexData['redcap_event_name']) || $indexData['redcap_event_name'] == "") || $indexData['redcap_event_name'] == $eventName) && $indexData[$triggerField] != "" && ((!isset($indexData['redcap_repeat_instance']) || $indexData['redcap_repeat_instance'] == "") || $indexData['redcap_repeat_instance'] == $repeat_instance)) {
-                    $triggerFieldValue = $indexData[$triggerField];
+                foreach ($results as $indexData) {
+                    if (((!isset($indexData['redcap_event_name']) || $indexData['redcap_event_name'] == "") || $indexData['redcap_event_name'] == $eventName) && $indexData[$triggerField] != "" && ((!isset($indexData['redcap_repeat_instance']) || $indexData['redcap_repeat_instance'] == "") || $indexData['redcap_repeat_instance'] == $repeat_instance)) {
+                        $triggerFieldValue = $indexData[$triggerField];
+                    }
+                    if (!empty($instanceMatching) && isset($indexData[$sourceInstanceField]) && $indexData[$sourceInstanceField] != "") {
+                        $instanceMatching['value'] = $indexData[$sourceInstanceField];
+                    }
                 }
-                if (!empty($instanceMatching) && isset($indexData[$sourceInstanceField]) && $indexData[$sourceInstanceField] != "") {
-                    $instanceMatching['value'] = $indexData[$sourceInstanceField];
+
+                $triggerFieldSet = false;
+
+                if (($triggerValue != ":is_empty:" && $triggerValue != "" && $triggerValue == $triggerFieldValue) || ($triggerValue == ":is_empty:" && $triggerFieldValue === "") || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
+                    $triggerFieldSet = true;
                 }
-            }
 
-            $triggerFieldSet = false;
+                if ($triggerFieldSet && $recordName != "") {
+                    //TODO Need to have logging or some other means of mapping source record to an existing dest record, save a record or just use a module log?
+                    // Only need in the case of there being UID setting?
 
-            if (($triggerValue != ":is_empty:" && $triggerValue != "" && $triggerValue == $triggerFieldValue) || ($triggerValue == ":is_empty:" && $triggerFieldValue === "") || ($triggerValue == "" && $triggerFieldValue != "") || $triggerField == "") {
-                $triggerFieldSet = true;
-            }
+                    $currentData = REDCap::getData($project_id, 'array', $record, array());
 
-            if ($triggerFieldSet && $recordName != "") {
-                //TODO Need to have logging or some other means of mapping source record to an existing dest record, save a record or just use a module log?
-                // Only need in the case of there being UID setting?
-                $newRecordName = $this->getNewRecordName($destinationProjectID,$project_id,$instanceMatching,$record,$currentData,$recordName,$instrument,$event_id,$repeat_instance);
+                    $newRecordName = $this->getNewRecordName($destinationProjectID, $project_id, $instanceMatching, $record, $currentData, $recordName, $instrument, $event_id, $repeat_instance);
+                    if ($newRecordName != "") {
+                        $destRecordExists = false;
+                        $targetRecordSql = "SELECT record FROM redcap_data WHERE project_id=? && record=? LIMIT 1";
+                        $result = $this->query($targetRecordSql, [$destinationProjectID, $newRecordName]);
 
-                if ($newRecordName != "") {
-                    $destRecordExists = false;
-                    $targetRecordSql = "SELECT record FROM redcap_data WHERE project_id=? && record=? LIMIT 1";
-                    $result = $this->query($targetRecordSql,[$destinationProjectID,$newRecordName]);
+                        while ($row = db_fetch_assoc($result)) {
+                            if ($row['record'] == $newRecordName) {
+                                $destRecordExists = true;
+                            }
+                        }
 
-                    while ($row = db_fetch_assoc($result)) {
-                        if ($row['record'] == $newRecordName) {
-                            $destRecordExists = true;
+                        if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
+                            //echo "Before transfer: ".time()."<br/>";
+                            $saveData[$destinationProjectID]['data'] = array_merge($saveData[$destinationProjectID]['data'], $this->transferRecordData($currentData, $currentProject, $destinationProject, $currentSourceFields, $currentDestinationFields, $instanceMatching, $newRecordName, ($pipeAllEvent == "yes" ? "" : $event_id), $repeat_instance));
+                            if ($triggerOnSave == "yes" && !in_array($newRecordName, $saveData[$destinationProjectID]['triggerOnSave'])) {
+                                $saveData[$destinationProjectID]['triggerOnSave'][] = $newRecordName;
+                            }
+                            //echo "After transfer: ".time()."<br/>";
+                            /*echo "<pre>";
+                            print_r($results);
+                            echo "</pre>";*/
                         }
                     }
+                }
+            }
+        }
 
-                    if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
-                        //echo "Before transfer: ".time()."<br/>";
-                        $saveData = $this->transferRecordData($currentData,$currentProject,$destinationProject,$currentSourceFields,$currentDestinationFields,$instanceMatching,$newRecordName,($pipeAllEvent == "yes" ? "" : $event_id),$repeat_instance);
-                        //echo "After transfer: ".time()."<br/>";
-                        $results = $this->saveDestinationData($destinationProject->project_id,$saveData);
-                        $errors = $results['errors'];
+        if (!empty($saveData)) {
+            $this->saveDestinationRecords($project_id,$saveData);
+        }
+    }
 
-                        if(!empty($errors)){
-                            $errorString = stripslashes(json_encode($errors, JSON_PRETTY_PRINT));
-                            $errorString = str_replace('""', '"', $errorString);
+    function saveDestinationRecords($project_id,$saveInfo) {
+        $debug = $this->getProjectSetting("enable_debug_logging",$project_id);
+        $errorEmail = $this->getProjectSetting("error_email",$project_id);
 
-                            $message = "The " . $this->getModuleName() . " module could not copy values for record " . $newRecordName . " from project $project_id to project ".$destinationProjectID." because of the following error(s):\n\n$errorString";
-                            error_log($message);
+        foreach ($saveInfo as $destinationProjectID => $destInfo) {
+            $destinationProject = new \Project($destinationProjectID);
+            $destData = $destInfo['data'];
+            $triggerOnSaves = $destInfo['triggerOnSave'];
+            $newRecordName = key($destData);
+            $results = $this->saveDestinationData($destinationProjectID, $destData);
+            echo "<pre>";
+            print_r($results);
+            echo "</pre>";
+            $errors = $results['errors'];
 
-                            $errorEmail = $this->getProjectSetting('error_email');
-                            //if ($errorEmail == "") $errorEmail = "james.r.moore@vumc.org";
-                            if(!empty($errorEmail)){
-                                ## Add check for universal from email address
-                                global $from_email;
-                                if($from_email != '') {
-                                    $headers = "From: ".$from_email."\r\n";
-                                }
-                                else {
-                                    $headers = null;
-                                }
-                                mail($errorEmail, $this->getModuleName() . " Module Error", $message, $headers);
-                            }
-                        }
-                        else {
-                            if ($debug == "1") {
-                                $this->log("Checking values for pid $destinationProjectID", [
-                                    '$targetProjectID' => $destinationProjectID,
-                                    '$destinationRecordID' => $results['id'],
-                                    '$destRecordExists' => $destRecordExists
-                                ]);
-                            }
-                            if ($triggerOnSave == "yes") {
-                                //TODO Need to add method to determine event ID, instance, instrument for saves
-                                $triggerResult = $this->triggerOnSaves($destinationProject,$newRecordName,$destinationProject->firstEventId);
-                            }
-                        }
-                        /*echo "<pre>";
-                        print_r($results);
-                        echo "</pre>";*/
+            if (!empty($errors)) {
+                $errorString = stripslashes(json_encode($errors, JSON_PRETTY_PRINT));
+                $errorString = str_replace('""', '"', $errorString);
+
+                $message = "The " . $this->getModuleName() . " module could not copy values for record " . $newRecordName . " from project $project_id to project " . $destinationProjectID . " because of the following error(s):\n\n$errorString";
+                error_log($message);
+
+                //if ($errorEmail == "") $errorEmail = "james.r.moore@vumc.org";
+                if (!empty($errorEmail)) {
+                    ## Add check for universal from email address
+                    global $from_email;
+                    if ($from_email != '') {
+                        $headers = "From: " . $from_email . "\r\n";
+                    } else {
+                        $headers = null;
+                    }
+                    mail($errorEmail, $this->getModuleName() . " Module Error", $message, $headers);
+                }
+            } else {
+                if ($debug == "1") {
+                    $this->log("Checking values for pid $destinationProjectID", [
+                        '$targetProjectID' => $destinationProjectID,
+                        '$saveData' => json_encode($destData)
+                    ]);
+                }
+                if (!empty($triggerOnSaves)) {
+                    foreach ($triggerOnSaves as $triggerRecord) {
+                        //TODO Need to add method to determine event ID, instance, instrument for saves
+                        $triggerResult = $this->triggerOnSaves($destinationProject, $triggerRecord, $destinationProject->firstEventId);
                     }
                 }
             }
@@ -456,6 +480,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $destData[$destRecord][$destEvent][$destFieldName] = $srcFieldValue;
             }
         }
+
         return $destData;
     }
 
@@ -709,5 +734,12 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
                 $this->setProjectSetting($key,$values,$this->getProjectId());
             }
         }
+    }
+
+    function getPipingSettings($project_id) {
+        if (empty($this->settings[$project_id])) {
+            $this->settings[$project_id] = $this->getProjectSettings($project_id);
+        }
+        return $this->settings[$project_id];
     }
 }

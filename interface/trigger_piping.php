@@ -42,17 +42,17 @@ if (isset($_POST['submit_record'])) {
             if ($project->isRepeatingForm($event, $formName) && isset($recordData['repeat_instances'][$event][$formName])) {
                 foreach ($recordData['repeat_instances'][$event][$formName] as $instance => $instanceData) {
                     if ($instanceData[$formName."_complete"] == "") continue;
-                    $module->pipeDataToDestinationProjects($project_id, $record_id, $event, $formName, $instance);
+                    $module->pipeDataToDestinationProjects($project_id, [$record_id], $event, $formName, $instance);
                 }
             } elseif ($project->isRepeatingEvent($event) && isset($recordData['repeat_instances'][$event][''])) {
                 foreach ($recordData['repeat_instances'][$event][''] as $instance => $instanceData) {
                     if ($instanceData[$formName."_complete"] == "") continue;
-                    $module->pipeDataToDestinationProjects($project_id, $record_id, $event, $formName, $instance);
+                    $module->pipeDataToDestinationProjects($project_id, [$record_id], $event, $formName, $instance);
                 }
             } else {
                 if (isset($recordData[$event])) {
                     if ($recordData[$event][$formName."_complete"] == "") continue;
-                    $module->pipeDataToDestinationProjects($project_id, $record_id, $event, $formName);
+                    $module->pipeDataToDestinationProjects($project_id, [$record_id], $event, $formName);
                 }
             }
         }
