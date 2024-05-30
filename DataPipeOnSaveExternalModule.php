@@ -35,7 +35,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
         //echo "Started: ".time()."<br/>";
         $this->pipeDataToDestinationProjects($project_id, [$record], $event_id, $instrument, $repeat_instance);
         //echo "Ended: ".time()."<br/>";
-        $this->exitAfterHook();
+        //$this->exitAfterHook();
     }
 
     public function pipeDataToDestinationProjects($project_id, $records, $event_id, $instrument, $repeat_instance="") {
@@ -160,9 +160,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
             $triggerOnSaves = $destInfo['triggerOnSave'];
             $newRecordName = key($destData);
             $results = $this->saveDestinationData($destinationProjectID, $destData);
-            echo "<pre>";
-            print_r($results);
-            echo "</pre>";
+
             $errors = $results['errors'];
 
             if (!empty($errors)) {
