@@ -131,7 +131,7 @@ class DataPipeOnSaveExternalModule extends AbstractExternalModule
 
                         if (($destRecordExists && $overwrite == "overwrite") || !$destRecordExists) {
                             //echo "Before transfer: ".time()."<br/>";
-                            $saveData[$destinationProjectID]['data'] = array_merge($saveData[$destinationProjectID]['data'], $this->transferRecordData($currentData, $currentProject, $destinationProject, $currentSourceFields, $currentDestinationFields, $instanceMatching, $newRecordName, ($pipeAllEvent == "yes" ? "" : $event_id), $repeat_instance));
+                            $saveData[$destinationProjectID]['data'] = $saveData[$destinationProjectID]['data'] + $this->transferRecordData($currentData, $currentProject, $destinationProject, $currentSourceFields, $currentDestinationFields, $instanceMatching, $newRecordName, ($pipeAllEvent == "yes" ? "" : $event_id), $repeat_instance);
                             if ($triggerOnSave == "yes" && !in_array($newRecordName, $saveData[$destinationProjectID]['triggerOnSave'])) {
                                 $saveData[$destinationProjectID]['triggerOnSave'][] = $newRecordName;
                             }
